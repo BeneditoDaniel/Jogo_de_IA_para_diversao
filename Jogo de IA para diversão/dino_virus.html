@@ -713,6 +713,7 @@ function resetGame() {
   particles = [];
   powerups = [];
   firewalls = [];
+  popupActive = false;
   player.y = 220;
   player.vy = 0;
   player.grounded = true;
@@ -829,6 +830,12 @@ function restartFromPause() {
 }
 
 window.addEventListener('keydown', e => {
+  // Fechar pop-up de vírus
+  if (popupActive && (e.key === 'x' || e.key === 'X')) {
+    e.preventDefault();
+    closePopup();
+    return;
+  }
   // Menu de pause com tecla M
   if (e.key === 'm' || e.key === 'M') {
     e.preventDefault();
@@ -843,6 +850,7 @@ window.addEventListener('keydown', e => {
   }
   // Esc também pausa/continua
   if (e.key === 'Escape') {
+    if (popupActive) { closePopup(); return; }
     if (gameState === 'playing') pauseGame();
     else if (gameState === 'paused') resumeGame();
   }
@@ -856,6 +864,23 @@ function isUiControl(el) {
 function handlePointer(e) {
   const target = e.target;
   if (isUiControl(target)) return;
+  // Clique no X do pop-up (coordenadas do canvas) — se não for no X, o jogo segue (pode pular)
+  if (popupActive && window._popupXBtn) {
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.clientX ?? (e.touches && e.touches[0] && e.touches[0].clientX);
+    const clientY = e.clientY ?? (e.touches && e.touches[0] && e.touches[0].clientY);
+    if (clientX != null) {
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const mx = (clientX - rect.left) * scaleX;
+      const my = (clientY - rect.top) * scaleY;
+      const b = window._popupXBtn;
+      if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) {
+        closePopup();
+        return;
+      }
+    }
+  }
   if (gameState === 'start' || gameState === 'over') startGame();
   else if (gameState === 'playing') jump();
 }
@@ -1041,8 +1066,75 @@ const ESPINHO_COLORS = {
 };
 const ENEMY_SCALE = 3;
 
+// ===== Sprites pós-300 =====
+const MINHOCA_HEAD = [
+  "11122     ",
+  "331122222 ",
+  "311W122222",
+  " 331W12222",
+  " 3 1112222",
+  "  33111122",
+  " 3 W111112",
+  "3 31111112",
+  "3111111222",
+  "311112222 ",
+  "11122     "
+];
+const MINHOCA_HEAD_COLORS = { '1': '#710045', '2': '#4a0030', '3': '#2a0018', 'W': '#ffffff' };
+const MINHOCA_BODY = [
+  "   1112222   ",
+  "  111222222  ",
+  " 11111222222 ",
+  " 11111122222 ",
+  "1111111112222",
+  "1111111111222",
+  "1111111111222",
+  "1111111111222",
+  " 11111111122 ",
+  " 11111111222 ",
+  "  111112222  ",
+  "    112222   "
+];
+const MINHOCA_BODY_COLORS = { '1': '#710045', '2': '#4a0030' };
+const BOLAV2_GRID = [
+  "      111      ",
+  "    1111111    ",
+  "   111111111   ",
+  "  1111WWW1111  ",
+  " 111WW   WW111 ",
+  " 11W  111  W11 ",
+  "111W 11111 W111",
+  "11W 1111111 W11",
+  "111W 11111 W111",
+  " 11W  111  W11 ",
+  " 111WW   WW111 ",
+  "  1111WWW1111  ",
+  "   111111111   ",
+  "     11111     ",
+  "      111      "
+];
+const BOLAV2_COLORS = { '1': '#3a0048', 'W': '#ffffff' };
+const DOWNLOAD_GRID = [
+  "     1     ",
+  "    121    ",
+  "   12321   ",
+  "  1233321  ",
+  " 123333321 ",
+  "12333333321",
+  "12222322221",
+  "    232    ",
+  "    232    ",
+  "    232    ",
+  "    222    ",
+  "    111    "
+];
+const DOWNLOAD_COLORS = { '1': '#003000', '2': '#006010', '3': '#00d020' };
+
+// Pop-up "Virus Detectado" ativo
+let popupActive = false;
+let popupGlitch = 0;
+
 function drawSpriteGrid(grid, x, y, scale, colorMap) {
-  // base inteira: evita pixels “pulando” em alta velocidade
   const bx = Math.round(x);
   const by = Math.round(y);
   for (let row = 0; row < grid.length; row++) {
@@ -1051,7 +1143,7 @@ function drawSpriteGrid(grid, x, y, scale, colorMap) {
       const ch = line[col];
       if (ch === ' ' || ch === undefined) continue;
       let colr;
-      if (ch === 'E') colr = '#ffffff';
+      if (ch === 'E' || ch === 'W') colr = (colorMap && colorMap[ch]) || '#ffffff';
       else if (colorMap && typeof colorMap === 'object' && colorMap[ch]) colr = colorMap[ch];
       else if (typeof colorMap === 'string') colr = colorMap;
       else colr = '#da00b5';
@@ -1067,7 +1159,6 @@ function drawEnemy(e) {
   } else if (e.type === 'espinho') {
     drawSpriteGrid(ESPINHO_GRID, e.x, e.y, ENEMY_SCALE, ESPINHO_COLORS);
   } else if (e.type === 'bola') {
-    // Raios sutis (antes do sprite)
     const cx = Math.round(e.x + e.w / 2);
     const cy = Math.round(e.y + e.h / 2);
     const pulse = 0.5 + 0.5 * Math.sin(frame * 0.15 + (e.phase || 0));
@@ -1097,6 +1188,71 @@ function drawEnemy(e) {
     }
     ctx.globalAlpha = 1;
     drawSpriteGrid(BOLA_GRID, e.x, e.y, ENEMY_SCALE, '#840293');
+  } else if (e.type === 'minhoca') {
+    // corpo (segmentos próximos atrás da cabeça)
+    const segs = e.segments || [];
+    for (let s = segs.length - 1; s >= 0; s--) {
+      const sg = segs[s];
+      drawSpriteGrid(MINHOCA_BODY, sg.x, sg.y, 2, MINHOCA_BODY_COLORS);
+    }
+    // cabeça aponta para a esquerda (sprite natural já olha à esquerda)
+    let hx = e.x, hy = e.y;
+    if (e.state === 'shake') {
+      hx += (Math.random() - 0.5) * 4;
+      hy += (Math.random() - 0.5) * 4;
+    }
+    drawSpriteGrid(MINHOCA_HEAD, hx, hy, 3, MINHOCA_HEAD_COLORS);
+  } else if (e.type === 'bolav2') {
+    const cx = Math.round(e.x + e.w / 2);
+    const cy = Math.round(e.y + e.h / 2);
+    // Campo elétrico: raios em zigue-zague (estilo raio)
+    if (e.fieldOn) {
+      const bolts = 7;
+      for (let i = 0; i < bolts; i++) {
+        const ang = frame * 0.1 + i * (Math.PI * 2 / bolts) + Math.sin(frame * 0.2 + i) * 0.15;
+        const len = e.w * 0.55 + 8 + Math.random() * 14;
+        const segs = 4 + Math.floor(Math.random() * 3);
+        // traço externo escuro e grosso
+        ctx.globalAlpha = 0.7;
+        ctx.strokeStyle = '#2a0038';
+        ctx.lineWidth = 3.5;
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        for (let s = 1; s <= segs; s++) {
+          const t = s / segs;
+          const jitter = (Math.random() - 0.5) * (10 + s * 2);
+          const px = cx + Math.cos(ang) * len * t + Math.cos(ang + Math.PI / 2) * jitter;
+          const py = cy + Math.sin(ang) * len * t + Math.sin(ang + Math.PI / 2) * jitter;
+          ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+        // núcleo médio
+        ctx.globalAlpha = 0.85;
+        ctx.strokeStyle = '#5a1078';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        for (let s = 1; s <= segs; s++) {
+          const t = s / segs;
+          const jitter = (Math.random() - 0.5) * (8 + s * 1.5);
+          const px = cx + Math.cos(ang) * len * t + Math.cos(ang + Math.PI / 2) * jitter;
+          const py = cy + Math.sin(ang) * len * t + Math.sin(ang + Math.PI / 2) * jitter;
+          ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+      }
+      // anel do campo
+      ctx.globalAlpha = 0.3;
+      ctx.strokeStyle = '#3a0050';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, e.w * 0.7, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 1;
+    }
+    drawSpriteGrid(BOLAV2_GRID, e.x, e.y, 3, BOLAV2_COLORS);
   }
 }
 
@@ -1144,11 +1300,52 @@ function isBolaSpawnFree(x, minDist = 85) {
 }
 
 function spawnEnemy() {
-  // Raridade: espinho muito comum, vírus e bola comuns
+  const post300 = score >= INVERT_SCORE;
+
+  // Pós-300: só Minhoca, BolaV2 (comuns) e Pop-up via download falso (raro, em spawnPowerup)
+  if (post300) {
+    // limpa inimigos antigos que ainda restarem
+    enemies = enemies.filter(e => e.type === 'minhoca' || e.type === 'bolav2');
+
+    const pool = [];
+    for (let i = 0; i < 3; i++) pool.push('minhoca');
+    for (let i = 0; i < 3; i++) pool.push('bolav2');
+    const type = pool[Math.floor(Math.random() * pool.length)];
+
+    if (type === 'minhoca') {
+      // Só no lado direito, apontando para a esquerda
+      const face = 'left';
+      const hw = 10 * 3, hh = 11 * 3;
+      const x = 785; // um pouco para a direita na borda
+      const y = 40 + Math.random() * 180;
+      enemies.push({
+        type: 'minhoca', x, y, w: hw, h: hh,
+        face, state: 'peek', timer: 90 + Math.floor(Math.random() * 60),
+        speedMul: 0, dirX: -1, dirY: 0,
+        segments: [], chargeSpeed: 14 + Math.random() * 4
+      });
+      return;
+    }
+
+    // bolav2
+    let x = 820 + Math.random() * 80;
+    if (!isSpawnFree(x, 60)) return;
+    const bw = 15 * 3, bh = 15 * 3;
+    enemies.push({
+      type: 'bolav2', x, y: 80 + Math.random() * 100,
+      w: bw, h: bh, baseY: 80 + Math.random() * 100,
+      amp: 30 + Math.random() * 40, bobSpeed: 0.03 + Math.random() * 0.04,
+      phase: Math.random() * Math.PI * 2, speedMul: 0.85 + Math.random() * 0.25,
+      fieldOn: true, fieldTimer: 100 + Math.floor(Math.random() * 40)
+    });
+    return;
+  }
+
+  // Pré-300: inimigos originais
   const pool = [];
-  for (let i = 0; i < 5; i++) pool.push('espinho'); // muito comum
-  for (let i = 0; i < 2; i++) pool.push('virus');   // comum
-  for (let i = 0; i < 2; i++) pool.push('bola');    // comum
+  for (let i = 0; i < 5; i++) pool.push('espinho');
+  for (let i = 0; i < 2; i++) pool.push('virus');
+  for (let i = 0; i < 2; i++) pool.push('bola');
   const type = pool[Math.floor(Math.random() * pool.length)];
 
   let x = 820 + Math.random() * 80;
@@ -1170,12 +1367,11 @@ function spawnEnemy() {
   let e = { x: x, type: type };
 
   if (type === 'virus') {
-    // Anda no chão da direita → esquerda. speedMul > 1 para não parecer ir à direita no chão.
     e.w = 14 * ENEMY_SCALE;
     e.h = 14 * ENEMY_SCALE;
     e.y = 268 - e.h;
     e.baseY = e.y;
-    e.speedMul = 1.2 + Math.random() * 0.5; // 1.2–1.7× (mínimo razoável)
+    e.speedMul = 1.2 + Math.random() * 0.5;
     e.dir = -1;
   } else if (type === 'espinho') {
     e.w = 13 * ENEMY_SCALE;
@@ -1230,13 +1426,17 @@ function spawnPowerup() {
   // Pesa os tipos:
   // - se já tem o power-up ativo → chance cai drasticamente
   // - firewall é naturalmente mais raro
+  // - download (falso / pop-up) só pós-300 e um pouco raro
   const weights = {
     shield: player.hasShield ? 0.08 : 1.0,
     rocket: player.hasDoubleJump ? 0.08 : 1.0,
-    firewall: 0.35   // bem mais raro que os outros
+    firewall: 0.35
   };
+  if (score >= INVERT_SCORE) {
+    weights.download = 0.45; // um pouco raro
+  }
   const pool = [];
-  for (const t of ['shield', 'rocket', 'firewall']) {
+  for (const t of Object.keys(weights)) {
     const w = Math.round(weights[t] * 20);
     for (let i = 0; i < w; i++) pool.push(t);
   }
@@ -1281,12 +1481,20 @@ function activateFirewall() {
 function update() {
   if (gameState !== 'playing') return;
 
+  // Pop-up só atrapalha a visão — o jogo continua
+  if (popupActive) popupGlitch++;
+
   frame++;
   // Score: Overclock aumenta um pouco o ganho
   scoreAcc += player.hasDoubleJump ? 1.35 : 1;
   score = Math.floor(scoreAcc / 5);
   setScoreDisplay(score);
   updateInvertTheme();
+
+  // Ao cruzar 300, remove inimigos do mundo antigo
+  if (score >= INVERT_SCORE) {
+    enemies = enemies.filter(e => e.type === 'minhoca' || e.type === 'bolav2');
+  }
 
   // Velocidade base + pequeno boost do Overclock
   speed = 6 + Math.floor(score / 200);
@@ -1393,23 +1601,30 @@ function update() {
     p.y = p.baseY + Math.sin(p.bob) * 2;
 
     if (playerCollides(p)) {
-      // Ativa o power-up
+      if (p.type === 'download') {
+        // Pop-up falso — abre overlay de vírus
+        popupActive = true;
+        popupGlitch = 0;
+        playTone(120, 0.2, 'sawtooth', 0.2);
+        playTone(80, 0.3, 'square', 0.15);
+        powerups.splice(i, 1);
+        continue;
+      }
       if (p.type === 'shield') {
         player.hasShield = true;
-        player.shieldTimer = 480; // ~8 segundos
+        player.shieldTimer = 480;
         bringPowerRowToTop('power-av');
         playTone(600, 0.1, 'square', 0.12);
         playTone(800, 0.15, 'square', 0.1);
       } else if (p.type === 'rocket') {
         player.hasDoubleJump = true;
-        player.doubleJumpTimer = 600; // ~10 segundos
+        player.doubleJumpTimer = 600;
         player.canDoubleJump = true;
         bringPowerRowToTop('power-oc');
         playTone(400, 0.08, 'square', 0.12, 700);
       } else if (p.type === 'firewall') {
         activateFirewall();
       }
-      // partículas de coleta
       for (let k = 0; k < 10; k++) {
         particles.push({
           x: p.x + 14,
@@ -1461,32 +1676,90 @@ function update() {
   // ===== Inimigos =====
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
-    // Sempre da direita para a esquerda na tela
-    let mul = Math.abs(e.speedMul || 1);
-    if (e.type === 'virus') mul = Math.max(1.2, mul); // nunca mais lento que o chão
-    e.x -= Math.abs(speed) * mul;
 
-    if (e.type === 'bola') {
+    if (e.type === 'minhoca') {
+      e.timer--;
+      if (e.state === 'peek' && e.timer <= 0) {
+        e.state = 'shake';
+        e.timer = 40;
+      } else if (e.state === 'shake' && e.timer <= 0) {
+        e.state = 'charge';
+      } else if (e.state === 'charge') {
+        e.x += e.dirX * e.chargeSpeed;
+        e.y += e.dirY * e.chargeSpeed;
+        // segmentos colados atrás da cabeça (espaçamento ~18px)
+        const gap = 18;
+        const bodyW = 13 * 2;
+        e.segments = [];
+        for (let s = 1; s <= 7; s++) {
+          e.segments.push({
+            x: e.x + s * gap + (bodyW * 0.15),
+            y: e.y + (e.h - 12 * 2) / 2 + (Math.random() - 0.5) * 1.5
+          });
+        }
+      }
+      // remove se saiu da tela após charge
+      if (e.state === 'charge' && (e.x < -80 || e.x > 880 || e.y < -80 || e.y > 360)) {
+        enemies.splice(i, 1);
+        continue;
+      }
+    } else if (e.type === 'bolav2') {
+      e.x -= Math.abs(speed) * Math.abs(e.speedMul || 1);
       e.y = e.baseY + Math.sin(frame * e.bobSpeed + e.phase) * e.amp;
+      e.fieldTimer--;
+      if (e.fieldTimer <= 0) {
+        e.fieldOn = !e.fieldOn;
+        e.fieldTimer = e.fieldOn ? (90 + Math.floor(Math.random() * 50)) : (70 + Math.floor(Math.random() * 40));
+      }
+      if (e.fieldOn && frame % 2 === 0) {
+        const cx = e.x + e.w / 2, cy = e.y + e.h / 2;
+        const ang = Math.random() * Math.PI * 2;
+        const dist = e.w * (0.3 + Math.random() * 0.45);
+        // fragmento de raio (segmento curto)
+        particles.push({
+          x: cx + Math.cos(ang) * dist,
+          y: cy + Math.sin(ang) * dist,
+          vx: Math.cos(ang) * 1.5 + (Math.random() - 0.5),
+          vy: Math.sin(ang) * 1.5 + (Math.random() - 0.5),
+          life: 8 + Math.floor(Math.random() * 6),
+          maxLife: 14,
+          color: Math.random() > 0.4 ? '#3a0050' : '#5a1078',
+          size: 2,
+          bolt: true,
+          ang: ang + (Math.random() - 0.5) * 0.8,
+          len: 6 + Math.random() * 10
+        });
+      }
+    } else {
+      // virus / espinho / bola (pré-300)
+      let mul = Math.abs(e.speedMul || 1);
+      if (e.type === 'virus') mul = Math.max(1.2, mul);
+      e.x -= Math.abs(speed) * mul;
+
+      if (e.type === 'bola') {
+        e.y = e.baseY + Math.sin(frame * e.bobSpeed + e.phase) * e.amp;
+      }
+
+      if (e.type === 'virus' && frame % 3 === 0) {
+        particles.push({
+          x: e.x + e.w * 0.6 + Math.random() * 6,
+          y: e.y + e.h * 0.4 + Math.random() * e.h * 0.4,
+          vx: 1.2 + Math.random() * 1.5,
+          vy: (Math.random() - 0.5) * 0.8,
+          life: 10 + Math.floor(Math.random() * 8),
+          maxLife: 18,
+          color: Math.random() > 0.5 ? '#da00b5' : '#ff66dd',
+          size: 2 + Math.floor(Math.random() * 2),
+          trail: true,
+          virusTrail: true
+        });
+      }
     }
 
-    // Rastro sutil do Vírus (cores magenta)
-    if (e.type === 'virus' && frame % 3 === 0) {
-      particles.push({
-        x: e.x + e.w * 0.6 + Math.random() * 6,
-        y: e.y + e.h * 0.4 + Math.random() * e.h * 0.4,
-        vx: 1.2 + Math.random() * 1.5, // para a direita (atrás do vírus)
-        vy: (Math.random() - 0.5) * 0.8,
-        life: 10 + Math.floor(Math.random() * 8),
-        maxLife: 18,
-        color: Math.random() > 0.5 ? '#da00b5' : '#ff66dd',
-        size: 2 + Math.floor(Math.random() * 2),
-        trail: true,
-        virusTrail: true
-      });
-    }
-
-    if (playerCollides(e)) {
+    // Minhoca só colide no charge; BolaV2 sempre (campo é visual + hit)
+    if (e.type === 'minhoca' && e.state !== 'charge') {
+      // sem colisão no peek/shake
+    } else if (playerCollides(e)) {
       if (player.hasShield) {
         // Escudo absorve o hit
         player.hasShield = false;
@@ -1532,7 +1805,11 @@ function update() {
       }
     }
 
-    if (e.x < -50) enemies.splice(i, 1);
+    if (e.type === 'minhoca') {
+      // só remove no charge (já tratado acima)
+    } else if (e.x < -80) {
+      enemies.splice(i, 1);
+    }
   }
 
   // Moedas
@@ -1667,11 +1944,14 @@ function getPlayerHitboxes() {
 
 function playerCollides(obj) {
   const boxes = getPlayerHitboxes();
-  // Bola: hitbox circular
-  if (obj.type === 'bola') {
+  // Bola / BolaV2: hitbox circular (BolaV2 com campo ligado usa raio dos raios)
+  if (obj.type === 'bola' || obj.type === 'bolav2') {
     const cx = obj.x + obj.w / 2;
     const cy = obj.y + obj.h / 2;
-    const r = Math.min(obj.w, obj.h) * 0.42;
+    let r = Math.min(obj.w, obj.h) * 0.42;
+    if (obj.type === 'bolav2') {
+      r = Math.min(obj.w, obj.h) * (obj.fieldOn ? 0.72 : 0.45);
+    }
     for (let i = 0; i < boxes.length; i++) {
       if (circleRectCollide(cx, cy, r, boxes[i])) return true;
     }
@@ -1694,10 +1974,11 @@ function playerCollides(obj) {
 
 // Colisão generica inimigo vs retângulo (firewall etc.)
 function enemyCollidesRect(e, rect) {
-  if (e.type === 'bola') {
+  if (e.type === 'bola' || e.type === 'bolav2') {
     const cx = e.x + e.w / 2;
     const cy = e.y + e.h / 2;
-    const r = Math.min(e.w, e.h) * 0.42;
+    let r = Math.min(e.w, e.h) * 0.42;
+    if (e.type === 'bolav2') r = Math.min(e.w, e.h) * (e.fieldOn ? 0.72 : 0.45);
     return circleRectCollide(cx, cy, r, rect);
   }
   if (e.type === 'espinho') {
@@ -1781,9 +2062,12 @@ function drawPowerup(p) {
   } else if (p.type === 'firewall') {
     glow = 'rgba(255, 120, 70, 0.16)';
     glow2 = 'rgba(255, 210, 190, 0.11)';
+  } else if (p.type === 'download') {
+    glow = 'rgba(0, 210, 40, 0.22)';
+    glow2 = 'rgba(0, 0, 0, 0.28)';
   }
   // Pós-300: troca o brilho claro/branco por aura preta mais forte
-  if (invertT > 0.5) {
+  if (invertT > 0.5 && p.type !== 'download') {
     glow2 = 'rgba(0, 0, 0, 0.32)';
   }
 
@@ -1823,6 +2107,65 @@ function drawPowerup(p) {
   } else if (p.type === 'firewall') {
     const gw = 14 * POWER_SCALE, gh = 16 * POWER_SCALE;
     drawSpriteGrid(FIREWALL_PU_GRID, p.x + (p.w - gw) / 2, y + (p.h - gh) / 2, POWER_SCALE, FIREWALL_PU_COLORS);
+  } else if (p.type === 'download') {
+    const gw = 11 * POWER_SCALE, gh = 12 * POWER_SCALE;
+    // glitch sutil ao redor
+    if (frame % 5 < 2) {
+      ctx.globalAlpha = 0.35;
+      drawSpriteGrid(DOWNLOAD_GRID, p.x + (p.w - gw) / 2 + (Math.random() > 0.5 ? 2 : -2), y + (p.h - gh) / 2, POWER_SCALE, DOWNLOAD_COLORS);
+      ctx.globalAlpha = 1;
+    }
+    drawSpriteGrid(DOWNLOAD_GRID, p.x + (p.w - gw) / 2, y + (p.h - gh) / 2, POWER_SCALE, DOWNLOAD_COLORS);
+  }
+}
+
+function closePopup() {
+  popupActive = false;
+  playTone(200, 0.08, 'square', 0.1);
+}
+
+function drawVirusPopup() {
+  // Janela grande no centro do retângulo
+  const pw = 420, ph = 240;
+  let px = (800 - pw) / 2, py = (300 - ph) / 2;
+  // glitch offset
+  popupGlitch++;
+  if (popupGlitch % 7 === 0) px += (Math.random() - 0.5) * 6;
+  if (popupGlitch % 11 === 0) py += (Math.random() - 0.5) * 4;
+
+  // sombra
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(0, 0, 800, 300);
+
+  // moldura
+  ctx.fillStyle = '#2a0030';
+  ctx.fillRect(px - 4, py - 4, pw + 8, ph + 8);
+  // título
+  ctx.fillStyle = '#4a1058';
+  ctx.fillRect(px, py, pw, 28);
+  // corpo
+  ctx.fillStyle = '#6b1a8a';
+  ctx.fillRect(px, py + 28, pw, ph - 28);
+  // botão X
+  const xb = px + pw - 28, yb = py + 4;
+  ctx.fillStyle = '#c0a0c8';
+  ctx.fillRect(xb, yb, 22, 20);
+  ctx.fillStyle = '#ff2244';
+  ctx.font = '14px "Press Start 2P"';
+  ctx.fillText('X', xb + 4, yb + 16);
+  // guarda área do X para clique
+  window._popupXBtn = { x: xb, y: yb, w: 22, h: 20 };
+
+  // texto glitch
+  ctx.font = '22px "Press Start 2P"';
+  const gOff = (popupGlitch % 5 === 0) ? (Math.random() - 0.5) * 4 : 0;
+  ctx.fillStyle = '#00e030';
+  ctx.fillText('Virus', px + 40 + gOff, py + 100);
+  ctx.fillText('Detectado', px + 40 - gOff, py + 160);
+  // linhas de glitch
+  if (popupGlitch % 6 < 2) {
+    ctx.fillStyle = 'rgba(0,255,80,0.25)';
+    ctx.fillRect(px, py + 50 + (popupGlitch * 3) % (ph - 40), pw, 3);
   }
 }
 
@@ -1875,12 +2218,13 @@ function draw() {
   ctx.lineWidth = 1;
   for (let i = 0; i < enemies.length; i++) {
     const e = enemies[i];
-    if (e.type === 'bola') {
+    if (e.type === 'bola' || e.type === 'bolav2') {
       const cx = Math.round(e.x + e.w / 2);
       const cy = Math.round(e.y + e.h / 2);
-      const r = Math.round(Math.min(e.w, e.h) * 0.42);
+      let r = Math.min(e.w, e.h) * 0.42;
+      if (e.type === 'bolav2') r = Math.min(e.w, e.h) * (e.fieldOn ? 0.72 : 0.45);
       ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.arc(cx, cy, Math.round(r), 0, Math.PI * 2);
       ctx.stroke();
     } else if (e.type === 'espinho') {
       const t = getEspinhoTriangle(e);
@@ -1965,7 +2309,25 @@ function draw() {
   // Partículas
   particles.forEach(p => {
     const s = p.size || 4;
-    if (p.shard) {
+    if (p.bolt) {
+      // fragmento de raio elétrico
+      const alpha = p.maxLife ? Math.max(0.2, p.life / p.maxLife) : 0.7;
+      const ang = p.ang || 0;
+      const len = p.len || 8;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = p.color || '#3a0050';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      const jx = Math.cos(ang + Math.PI / 2) * (Math.random() - 0.5) * 5;
+      const jy = Math.sin(ang + Math.PI / 2) * (Math.random() - 0.5) * 5;
+      ctx.lineTo(p.x + Math.cos(ang) * len * 0.5 + jx, p.y + Math.sin(ang) * len * 0.5 + jy);
+      ctx.lineTo(p.x + Math.cos(ang) * len, p.y + Math.sin(ang) * len);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    } else if (p.shard) {
       // caco de vidro
       if (p.spin) p.rot = (p.rot || 0) + p.spin;
       ctx.save();
@@ -2025,6 +2387,9 @@ function draw() {
     }
   }
   updateHtmlPowerHud();
+
+  // Overlay do inimigo Pop-up
+  if (popupActive) drawVirusPopup();
 }
 
 
