@@ -1,0 +1,2045 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Dino Virus Runner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; }
+  body {
+    background: #0d0a12;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    min-height: 100dvh;
+    font-family: 'Press Start 2P', monospace;
+    overflow: hidden;
+    color: #b894d4;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  #stage {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #0d0a12;
+  }
+  /* HUD externa (acima do retângulo) */
+  #top-hud {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 12;
+    pointer-events: none;
+    padding: 14px 16px 8px;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    text-shadow: 2px 2px 0 #000;
+    color: #c9a0e0;
+    font-size: 13px;
+  }
+  #top-hud .hud-item { white-space: nowrap; }
+  #hud-left {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  #hud-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    /* um pouco para dentro para não cortar na borda */
+    margin-right: 8px;
+    max-width: 48%;
+  }
+  #power-hud {
+    display: none;
+    position: fixed;
+    right: 16px;
+    z-index: 12;
+    pointer-events: none;
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-end;
+  }
+  .power-row {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    background: rgba(10, 0, 20, 0.55);
+    padding: 3px 5px;
+  }
+  .power-row.active { display: flex; }
+  .power-icon { width: 10px; height: 10px; flex-shrink: 0; }
+  .power-icon.av { background: #00ffcc; }
+  .power-icon.oc { background: #ff6600; }
+  .power-meta { display: flex; flex-direction: column; gap: 2px; width: 100px; }
+  .power-label { font-size: 7px; line-height: 1.2; }
+  .power-label.av { color: #00ffcc; }
+  .power-label.oc { color: #ff6600; }
+  .power-bar-bg { width: 100%; height: 5px; background: #1a0033; }
+  .power-bar-fill { height: 100%; width: 0%; }
+  .power-bar-fill.av { background: #00ffcc; }
+  .power-bar-fill.oc { background: #ff6600; }
+
+  #game-container {
+    position: relative;
+    width: 800px;
+    height: 300px;
+    border: none;
+    box-shadow:
+      0 0 0 3px #5c3d7a,
+      0 0 14px #000000aa;
+    background: #000;
+    flex-shrink: 0;
+    transform-origin: center center;
+  }
+  canvas {
+    display: block;
+    width: 800px;
+    height: 300px;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+  /* HUD interna (desktop / telas maiores) */
+  #ui {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    pointer-events: none;
+    text-shadow: 2px 2px 0 #000;
+    color: #b894d4;
+  }
+  /* Após score 300 (tema invertido): letras pretas */
+  body.theme-inverted #ui {
+    color: #000000;
+    text-shadow:
+      0.5px 0 0 #fff,
+      -0.5px 0 0 #fff,
+      0 0.5px 0 #fff,
+      0 -0.5px 0 #fff;
+  }
+  #start-screen, #game-over, #pause-menu {
+    position: fixed;
+    inset: 0;
+    background: rgba(8, 6, 12, 0.94);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    z-index: 30;
+    overflow: hidden;
+  }
+  h1 {
+    font-size: 22px;
+    color: #c9a0e0;
+    margin-bottom: 14px;
+    text-shadow: 3px 3px 0 #000;
+    letter-spacing: 1px;
+  }
+  p {
+    margin: 8px 0;
+    font-size: 9px;
+    line-height: 1.6;
+    color: #9a7ab0;
+  }
+  .score-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 8px 0;
+  }
+  .score-row p { margin: 0; }
+  #new-record {
+    display: none;
+    position: absolute;
+    left: calc(50% + 10px);
+    top: -22px;
+    z-index: 5;
+    pointer-events: none;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 11px;
+    color: #ffe566;
+    text-shadow: 2px 2px 0 #000, 0 0 8px #ffaa00aa;
+    transform: rotate(12deg) scale(1);
+    transform-origin: left center;
+    white-space: nowrap;
+    line-height: 1.2;
+  }
+  #new-record.show {
+    display: block;
+    animation: recordPop 0.45s ease-out forwards;
+  }
+  @keyframes recordPop {
+    0%   { transform: rotate(12deg) scale(2.4); opacity: 0.95; }
+    70%  { transform: rotate(12deg) scale(1.05); opacity: 1; }
+    100% { transform: rotate(12deg) scale(1); opacity: 1; }
+  }
+  @media (max-width: 700px) {
+    #new-record {
+      font-size: clamp(12px, 3.5vw, 16px);
+      left: calc(50% + 4px);
+      top: -26px;
+    }
+  }
+  .btn {
+    margin-top: 22px;
+    padding: 12px 22px;
+    background: #6b3d8f;
+    color: #e8d4f5;
+    border: 2px solid #8a5aad;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 11px;
+    cursor: pointer;
+    box-shadow: 3px 3px 0 #000;
+  }
+  .btn:hover { background: #7d4aa3; color: #fff; }
+  .btn-secondary {
+    margin-top: 14px;
+    padding: 10px 18px;
+    background: transparent;
+    color: #9a7ab0;
+    border: 2px solid #5c3d7a;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    cursor: pointer;
+    box-shadow: 2px 2px 0 #000;
+  }
+  .btn-secondary:hover { background: #2a1a38; color: #c9a0e0; }
+  .hidden { display: none !important; }
+
+  /* Botão de pause (fundo sólido, sem borda) */
+  #mobile-pause {
+    display: none;
+    position: fixed;
+    z-index: 20;
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    border: none;
+    background: #7a3d9e;
+    cursor: pointer;
+    image-rendering: pixelated;
+    box-shadow: none;
+  }
+  /* Desktop: canto superior direito, fora do retângulo */
+  #mobile-pause.visible {
+    display: block;
+    top: 16px;
+    right: 16px;
+    left: auto;
+    bottom: auto;
+    transform: none;
+  }
+  #mobile-pause canvas {
+    width: 48px;
+    height: 48px;
+    display: block;
+    pointer-events: none;
+  }
+
+  /* ===== Telas menores ===== */
+  @media (max-width: 700px) {
+    #top-hud {
+      display: flex;
+      top: 22px;
+      padding-top: 20px;
+    }
+    #power-hud {
+      display: flex;
+    }
+    #ui { display: none !important; }
+    /* Mobile: bem embaixo, centrado */
+    #mobile-pause.visible {
+      display: block;
+      top: auto;
+      bottom: 20px;
+      left: 50%;
+      right: auto;
+      transform: translateX(-50%);
+      width: 56px;
+      height: 56px;
+    }
+    #mobile-pause canvas {
+      width: 56px;
+      height: 56px;
+    }
+    /* Menus em tela cheia, bem maiores */
+    #start-screen, #game-over, #pause-menu {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      padding: 20px 16px;
+    }
+    h1 {
+      font-size: clamp(22px, 7vw, 32px);
+      margin-bottom: 18px;
+    }
+    p {
+      font-size: clamp(11px, 3.2vw, 14px);
+      line-height: 1.8;
+      margin: 10px 0;
+    }
+    .btn {
+      font-size: clamp(12px, 3.5vw, 16px);
+      padding: 16px 24px;
+      margin-top: 28px;
+      min-height: 52px;
+    }
+    .btn-secondary {
+      font-size: clamp(11px, 3vw, 14px);
+      padding: 14px 20px;
+      min-height: 48px;
+    }
+  }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="top-hud">
+    <div id="hud-left">
+      <div class="hud-item">RECORDE: <span id="highscore-m">0</span></div>
+      <div class="hud-item">SCORE: <span id="score-m">0</span></div>
+    </div>
+    <div id="hud-right">
+      <div class="hud-item">BITS: <span id="bits-m">0</span></div>
+    </div>
+  </div>
+
+  <div id="power-hud">
+    <div class="power-row" id="power-av">
+      <div class="power-icon av"></div>
+      <div class="power-meta">
+        <div class="power-label av">ANTIVÍRUS</div>
+        <div class="power-bar-bg"><div class="power-bar-fill av" id="bar-av"></div></div>
+      </div>
+    </div>
+    <div class="power-row" id="power-oc">
+      <div class="power-icon oc"></div>
+      <div class="power-meta">
+        <div class="power-label oc">OVERCLOCK</div>
+        <div class="power-bar-bg"><div class="power-bar-fill oc" id="bar-oc"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="game-container">
+    <canvas id="game" width="800" height="300"></canvas>
+    <div id="ui">
+      <div>SCORE: <span id="score">0</span></div>
+      <div>RECORDE: <span id="highscore">0</span></div>
+      <div>BITS: <span id="bits">0</span></div>
+    </div>
+  </div>
+
+  <div id="start-screen">
+    <h1>DINO VIRUS</h1>
+    <p>Escape dos vírus e malwares!</p>
+    <p>Colete bits e power-ups • Pule com ESPAÇO / Clique / Toque</p>
+    <p style="opacity:0.7">M / Pause = Pausar</p>
+    <button class="btn" onclick="startGame()">INICIAR</button>
+  </div>
+  <div id="game-over" class="hidden">
+    <h1>GAME OVER</h1>
+    <div class="score-row">
+      <p>Score: <span id="final-score">0</span></p>
+      <span id="new-record">NOVO RECORDE!</span>
+    </div>
+    <p>Bits coletados nesta run: <span id="final-bits">0</span></p>
+    <p>Total de Bits: <span id="total-bits">0</span></p>
+    <button class="btn" onclick="startGame()">JOGAR NOVAMENTE</button>
+  </div>
+  <div id="pause-menu" class="hidden">
+    <h1>PAUSADO</h1>
+    <p>Score: <span id="pause-score">0</span></p>
+    <p>Bits nesta run: <span id="pause-bits">0</span></p>
+    <p style="opacity:0.7">M / Pause para continuar</p>
+    <button class="btn" onclick="resumeGame()">CONTINUAR</button>
+    <button class="btn-secondary" onclick="restartFromPause()">REINICIAR</button>
+  </div>
+
+  <button id="mobile-pause" type="button" aria-label="Pausar" onclick="toggleMobilePause(event)">
+    <canvas id="pause-icon" width="56" height="56"></canvas>
+  </button>
+</div>
+<script>
+
+function isMobileLayout() {
+  return window.matchMedia('(max-width: 700px)').matches;
+}
+
+function fitGameToScreen() {
+  const container = document.getElementById('game-container');
+  if (isMobileLayout()) {
+    // Largura total + um pouco a mais (corta laterais do jogo)
+    const scale = (window.innerWidth / 800) * 1.12;
+    container.style.transform = 'scale(' + scale + ')';
+  } else {
+    const pad = 24;
+    const maxW = window.innerWidth - pad * 2;
+    const maxH = window.innerHeight - pad * 2;
+    const scale = Math.min(maxW / 800, maxH / 300) * 0.88;
+    container.style.transform = 'scale(' + scale + ')';
+  }
+  // Power HUD logo acima do retângulo (mobile)
+  requestAnimationFrame(positionPowerHud);
+}
+
+function positionPowerHud() {
+  const hud = document.getElementById('power-hud');
+  const container = document.getElementById('game-container');
+  if (!hud || !container || !isMobileLayout()) return;
+  const rect = container.getBoundingClientRect();
+  // logo acima da borda superior do retângulo
+  hud.style.top = Math.max(8, rect.top - 8 - hud.offsetHeight) + 'px';
+  hud.style.right = Math.max(12, window.innerWidth - rect.right + 8) + 'px';
+}
+window.addEventListener('resize', fitGameToScreen);
+window.addEventListener('orientationchange', function() { setTimeout(fitGameToScreen, 100); });
+fitGameToScreen();
+
+// Ícone pause: fundo sólido (o botão já tem a cor), só as barras ||
+(function drawPauseIcon() {
+  const c = document.getElementById('pause-icon');
+  if (!c) return;
+  const g = c.getContext('2d');
+  g.imageSmoothingEnabled = false;
+  g.clearRect(0, 0, 56, 56);
+  // duas barras pretas ||
+  g.fillStyle = '#000';
+  g.fillRect(16, 12, 8, 32);
+  g.fillRect(32, 12, 8, 32);
+})();
+
+function syncMobileHud() {
+  const sm = document.getElementById('score-m');
+  const hm = document.getElementById('highscore-m');
+  const bm = document.getElementById('bits-m');
+  if (sm) sm.textContent = document.getElementById('score').textContent;
+  if (hm) hm.textContent = document.getElementById('highscore').textContent;
+  if (bm) bm.textContent = document.getElementById('bits').textContent;
+}
+
+function bringPowerRowToTop(id) {
+  const hud = document.getElementById('power-hud');
+  const row = document.getElementById(id);
+  if (hud && row) hud.prepend(row);
+}
+
+function updateHtmlPowerHud() {
+  const av = document.getElementById('power-av');
+  const oc = document.getElementById('power-oc');
+  const barAv = document.getElementById('bar-av');
+  const barOc = document.getElementById('bar-oc');
+  if (!av || !oc) return;
+  if (player.hasShield) {
+    av.classList.add('active');
+    barAv.style.width = Math.max(0, Math.min(100, (player.shieldTimer / 480) * 100)) + '%';
+  } else {
+    av.classList.remove('active');
+    barAv.style.width = '0%';
+  }
+  if (player.hasDoubleJump) {
+    oc.classList.add('active');
+    barOc.style.width = Math.max(0, Math.min(100, (player.doubleJumpTimer / 600) * 100)) + '%';
+  } else {
+    oc.classList.remove('active');
+    barOc.style.width = '0%';
+  }
+  positionPowerHud();
+}
+
+function setMobilePauseVisible(show) {
+  const btn = document.getElementById('mobile-pause');
+  if (!btn) return;
+  if (show) btn.classList.add('visible');
+  else btn.classList.remove('visible');
+}
+
+function toggleMobilePause(e) {
+  if (e) { e.preventDefault(); e.stopPropagation(); }
+  if (gameState === 'playing') pauseGame();
+  else if (gameState === 'paused') resumeGame();
+}
+
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+
+// Cores base (modo normal)
+const PURPLE = '#9b30ff';
+const LIGHT_PURPLE = '#c77dff';
+const DARK = '#0a0014';
+const BLACK = '#000000';
+const GROUND = '#1a0033';
+const DINO_COLOR = '#c77dff';
+const STAR = '#3a0066';
+const STAR_DIM = '#2a0055';
+const GROUND_LINE = '#4a0080';
+
+// Tema invertido: troca das cores principais (estilo Google Dino)
+// céu ← roxo do dino mais escuro | estrada ← faixas | estrelas ← céu | dino ← estrada
+const INV = {
+  dark: '#6b28a8',        // céu = tom do dino, mais escuro
+  ground: GROUND_LINE,    // estrada = cor das faixas
+  star: DARK,             // estrelas = cor do céu original
+  starDim: DARK,
+  dino: GROUND,           // dino = cor da estrada
+  dinoShade: DARK,        // sombra do dino
+  purple: GROUND,         // linha do chão
+  lightPurple: GROUND_LINE,
+  groundLine: GROUND      // faixas
+};
+
+// Fator de inversão 0→1 com transição suave a partir do score 300
+let invertT = 0;
+const INVERT_SCORE = 300;
+const INVERT_DURATION = 90; // frames (~1.5s)
+
+function hexToRgb(hex) {
+  const h = hex.replace('#', '');
+  return {
+    r: parseInt(h.slice(0, 2), 16),
+    g: parseInt(h.slice(2, 4), 16),
+    b: parseInt(h.slice(4, 6), 16)
+  };
+}
+function lerpColor(a, b, t) {
+  const A = hexToRgb(a), B = hexToRgb(b);
+  const r = Math.round(A.r + (B.r - A.r) * t);
+  const g = Math.round(A.g + (B.g - A.g) * t);
+  const bl = Math.round(A.b + (B.b - A.b) * t);
+  return '#' + [r, g, bl].map(x => x.toString(16).padStart(2, '0')).join('');
+}
+function theme() {
+  const t = invertT;
+  return {
+    purple: lerpColor(PURPLE, INV.purple, t),
+    lightPurple: lerpColor(LIGHT_PURPLE, INV.lightPurple, t),
+    dark: lerpColor(DARK, INV.dark, t),
+    ground: lerpColor(GROUND, INV.ground, t),
+    dino: lerpColor(DINO_COLOR, INV.dino, t),
+    dinoShade: lerpColor(PURPLE, INV.dinoShade, t),
+    star: lerpColor(STAR, INV.star, t),
+    starDim: lerpColor(STAR_DIM, INV.starDim, t),
+    groundLine: lerpColor(GROUND_LINE, INV.groundLine, t)
+  };
+}
+function updateInvertTheme() {
+  // Alvo: 0 se score < 300, 1 se score >= 300
+  const target = score >= INVERT_SCORE ? 1 : 0;
+  const step = 1 / INVERT_DURATION;
+  if (invertT < target) invertT = Math.min(target, invertT + step);
+  else if (invertT > target) invertT = Math.max(target, invertT - step);
+  // HUD desktop preta só no tema invertido
+  if (invertT > 0.5) document.body.classList.add('theme-inverted');
+  else document.body.classList.remove('theme-inverted');
+}
+
+// ========== ÁUDIO 8-BIT (Web Audio API) ==========
+let audioCtx = null;
+
+function initAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function playTone(freq, duration, type = 'square', volume = 0.15, slideTo = null) {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+  if (slideTo !== null) {
+    osc.frequency.linearRampToValueAtTime(slideTo, audioCtx.currentTime + duration);
+  }
+  gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + duration);
+}
+
+function playJump() {
+  playTone(420, 0.12, 'square', 0.18, 680);
+}
+
+function playCoin() {
+  playTone(880, 0.06, 'square', 0.12);
+  setTimeout(() => playTone(1175, 0.08, 'square', 0.1), 50);
+}
+
+function playHit() {
+  playTone(180, 0.25, 'sawtooth', 0.2, 60);
+  // noise-ish
+  setTimeout(() => playTone(90, 0.2, 'square', 0.12), 40);
+}
+
+function playStart() {
+  playTone(330, 0.08, 'square', 0.1);
+  setTimeout(() => playTone(440, 0.08, 'square', 0.1), 80);
+  setTimeout(() => playTone(550, 0.12, 'square', 0.12), 160);
+}
+
+// Fanfarra clássica 8-bit de recorde (arpejo ascendente + acorde)
+function playRecord() {
+  const notes = [523, 659, 784, 1046]; // C5 E5 G5 C6
+  notes.forEach((f, i) => {
+    setTimeout(() => playTone(f, 0.12, 'square', 0.14), i * 90);
+  });
+  setTimeout(() => {
+    playTone(784, 0.18, 'square', 0.12);
+    playTone(1046, 0.22, 'square', 0.1);
+  }, 400);
+  setTimeout(() => playTone(1318, 0.28, 'square', 0.12), 520);
+}
+
+// ========== STORAGE SEGURO (funciona mesmo em sandbox) ==========
+const memoryStore = {};
+function safeGet(key, fallback = '0') {
+  try {
+    return localStorage.getItem(key) || fallback;
+  } catch (e) {
+    return memoryStore[key] || fallback;
+  }
+}
+function safeSet(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch (e) {
+    memoryStore[key] = String(value);
+  }
+}
+
+// ========== ESTADO ==========
+let gameState = 'start';
+let score = 0;
+let scoreAcc = 0;
+let highScore = parseInt(safeGet('dinoVirusHigh')) || 0;
+let totalBits = parseInt(safeGet('dinoVirusBits')) || 0;
+let runBits = 0;
+let speed = 6;
+let frame = 0;
+let spawnTimerEnemy = 0;
+let spawnTimerCoin = 0;
+let spawnTimerPower = 0;
+let groundX = 0;
+
+// Player (dino) - dimensões próximas ao original Google (44x47)
+const player = {
+  x: 80,
+  y: 220,
+  w: 44,
+  h: 47,
+  vy: 0,
+  jumpPower: -13.5,
+  grounded: true,
+  anim: 0,
+  // Power-ups
+  hasShield: false,
+  shieldTimer: 0,
+  hasDoubleJump: false,
+  doubleJumpTimer: 0,
+  canDoubleJump: false, // disponível após o primeiro pulo
+  jumpsUsed: 0
+};
+
+let enemies = [];
+let coins = [];
+let particles = [];
+let powerups = [];   // power-ups no chão
+let firewalls = [];  // paredes de fogo ativas
+
+document.getElementById('highscore').textContent = highScore;
+document.getElementById('bits').textContent = totalBits;
+syncMobileHud();
+
+function setScoreDisplay(v) {
+  document.getElementById('score').textContent = v;
+  const m = document.getElementById('score-m');
+  if (m) m.textContent = v;
+}
+function setBitsDisplay(v) {
+  document.getElementById('bits').textContent = v;
+  const m = document.getElementById('bits-m');
+  if (m) m.textContent = v;
+}
+function setHighDisplay(v) {
+  document.getElementById('highscore').textContent = v;
+  const m = document.getElementById('highscore-m');
+  if (m) m.textContent = v;
+}
+
+function resetGame() {
+  score = 0;
+  scoreAcc = 0;
+  invertT = 0;
+  document.body.classList.remove('theme-inverted');
+  runBits = 0;
+  speed = 6;
+  frame = 0;
+  spawnTimerEnemy = 0;
+  spawnTimerCoin = 0;
+  spawnTimerPower = 0;
+  groundX = 0;
+  enemies = [];
+  coins = [];
+  particles = [];
+  powerups = [];
+  firewalls = [];
+  player.y = 220;
+  player.vy = 0;
+  player.grounded = true;
+  player.hasShield = false;
+  player.shieldTimer = 0;
+  player.hasDoubleJump = false;
+  player.doubleJumpTimer = 0;
+  player.canDoubleJump = false;
+  player.jumpsUsed = 0;
+  setScoreDisplay(0);
+  setBitsDisplay(totalBits);
+  updateHtmlPowerHud();
+}
+
+let canRestartAt = 0; // timestamp: só reinicia após a morte quando Date.now() >= canRestartAt
+
+function startGame() {
+  // Delay silencioso após morte (sem indicativo visual)
+  if (gameState === 'over' && Date.now() < canRestartAt) return;
+  initAudio();
+  playStart();
+  resetGame();
+  gameState = 'playing';
+  document.getElementById('start-screen').classList.add('hidden');
+  document.getElementById('game-over').classList.add('hidden');
+  document.getElementById('pause-menu').classList.add('hidden');
+  setMobilePauseVisible(true);
+  requestAnimationFrame(loop);
+}
+
+function gameOver() {
+  gameState = 'over';
+  canRestartAt = Date.now() + 800;
+  playHit();
+  setMobilePauseVisible(false);
+  const isNewRecord = score > highScore;
+  if (isNewRecord) {
+    highScore = score;
+    safeSet('dinoVirusHigh', highScore);
+    setHighDisplay(highScore);
+  }
+  totalBits += runBits;
+  safeSet('dinoVirusBits', totalBits);
+  setBitsDisplay(totalBits);
+
+  document.getElementById('final-score').textContent = score;
+  document.getElementById('final-bits').textContent = runBits;
+  document.getElementById('total-bits').textContent = totalBits;
+
+  const nr = document.getElementById('new-record');
+  nr.classList.remove('show');
+  void nr.offsetWidth;
+  if (isNewRecord) {
+    nr.classList.add('show');
+    setTimeout(() => playRecord(), 120);
+  } else {
+    nr.classList.remove('show');
+  }
+
+  document.getElementById('game-over').classList.remove('hidden');
+}
+
+// Controles
+function jump() {
+  if (gameState !== 'playing') return;
+
+  // Pulo normal (do chão)
+  if (player.grounded) {
+    player.vy = player.jumpPower;
+    player.grounded = false;
+    player.jumpsUsed = 1;
+    player.canDoubleJump = player.hasDoubleJump;
+    playJump();
+  }
+  // Pulo duplo (no ar, se tiver a mochila foguete ativa)
+  else if (player.canDoubleJump && player.jumpsUsed < 2) {
+    player.vy = player.jumpPower * 0.95;
+    player.jumpsUsed = 2;
+    player.canDoubleJump = false;
+    playJump();
+    // partículas de foguete
+    for (let i = 0; i < 8; i++) {
+      particles.push({
+        x: player.x + 20,
+        y: player.y + 40,
+        vx: (Math.random() - 0.5) * 4,
+        vy: Math.random() * 3 + 2,
+        life: 15,
+        color: '#ff6600'
+      });
+    }
+  }
+}
+function pauseGame() {
+  if (gameState !== 'playing') return;
+  gameState = 'paused';
+  document.getElementById('pause-score').textContent = score;
+  document.getElementById('pause-bits').textContent = runBits;
+  document.getElementById('pause-menu').classList.remove('hidden');
+  setMobilePauseVisible(false);
+}
+
+function resumeGame() {
+  if (gameState !== 'paused') return;
+  gameState = 'playing';
+  document.getElementById('pause-menu').classList.add('hidden');
+  setMobilePauseVisible(true);
+  requestAnimationFrame(loop);
+}
+
+function restartFromPause() {
+  document.getElementById('pause-menu').classList.add('hidden');
+  startGame();
+}
+
+window.addEventListener('keydown', e => {
+  // Menu de pause com tecla M
+  if (e.key === 'm' || e.key === 'M') {
+    e.preventDefault();
+    if (gameState === 'playing') pauseGame();
+    else if (gameState === 'paused') resumeGame();
+    return;
+  }
+  if (e.code === 'Space' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (gameState === 'start' || gameState === 'over') startGame();
+    else if (gameState === 'playing') jump();
+  }
+  // Esc também pausa/continua
+  if (e.key === 'Escape') {
+    if (gameState === 'playing') pauseGame();
+    else if (gameState === 'paused') resumeGame();
+  }
+});
+function isUiControl(el) {
+  if (!el || !el.closest) return false;
+  return !!(el.closest('button') || el.closest('a') || el.closest('input') ||
+    el.closest('#mobile-pause') || el.closest('.btn') || el.closest('.btn-secondary'));
+}
+
+function handlePointer(e) {
+  const target = e.target;
+  if (isUiControl(target)) return;
+  if (gameState === 'start' || gameState === 'over') startGame();
+  else if (gameState === 'playing') jump();
+}
+
+document.addEventListener('mousedown', handlePointer);
+document.addEventListener('touchstart', e => {
+  if (isUiControl(e.target)) return;
+  e.preventDefault();
+  handlePointer(e);
+}, { passive: false });
+
+// ========== DESENHO PIXEL ART ==========
+function drawRect(x, y, w, h, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(Math.round(x), Math.round(y), Math.max(1, Math.round(w)), Math.max(1, Math.round(h)));
+}
+
+// Sprite baseado na imagem fornecida (T-Rex pixel-art), recolorido para a paleta roxa do jogo
+// Grid 44x47 extraído e adaptado
+const DINO_GRID = [
+  "                        ##################  ",
+  "                        ##################  ",
+  "                      ######################",
+  "                      ####EEE###############",
+  "                      ####EEE###############",
+  "                      ####EEE###############",
+  "                      ######################",
+  "                      ######################",
+  "                      ######################",
+  "                      ######################",
+  "                      ######################",
+  "                      ######################",
+  "                      ###########           ",
+  "                      ###########           ",
+  "                      ##################    ",
+  "                      ##################    ",
+  "##                  ####################    ",
+  "##                  ###########             ",
+  "##              ###############             ",
+  "##              ###############             ",
+  "##              ###############             ",
+  "#####        ######################         ",
+  "#####        ######################         ",
+  "#######    ####################  ##         ",
+  "#######    ####################  ##         ",
+  "###############################             ",
+  "###############################             ",
+  "###############################             ",
+  "###############################             ",
+  "###############################             ",
+  "  #############################             ",
+  "  ###########################               ",
+  "    #########################               ",
+  "    #########################               ",
+  "       ####################                 ",
+  "       ####################                 ",
+  "         ###############                    ",
+  "         ###############                    ",
+  "           #######  ####                    ",
+  "           #######  ####                    ",
+  "           #####      ##                    ",
+  "           #####      ##                    ",
+  "           #####      ##                    ",
+  "           ##         ##                    ",
+  "           ##         ##                    ",
+  "           #####      #####                 ",
+  "           #####      #####                 "
+];
+
+function drawDino(x, y, frame, isJumping) {
+  const th = theme();
+  const body = th.dino;
+  const shade = th.dinoShade;
+  // olhos contrastam com o corpo (claro no normal, claros também no invertido escuro)
+  const eyeCol = invertT > 0.5 ? DINO_COLOR : '#ffffff';
+
+  // Bob suave do corpo na corrida (1px para cima/baixo)
+  const legFrame = isJumping ? -1 : (Math.floor(frame / 4) % 4);
+  const bob = (!isJumping && (legFrame === 1 || legFrame === 3)) ? -1 : 0;
+  const dy = bob;
+
+  // Desenha o corpo (linhas 0–37), com bob
+  for (let row = 0; row < 38; row++) {
+    const line = DINO_GRID[row];
+    for (let col = 0; col < line.length; col++) {
+      const ch = line[col];
+      if (ch === '#') {
+        const isEdge = (col > 0 && line[col - 1] === ' ') || (col < line.length - 1 && line[col + 1] === ' ');
+        drawRect(x + col, y + row + dy, 1, 1, isEdge ? shade : body);
+      } else if (ch === 'E') {
+        drawRect(x + col, y + row + dy, 1, 1, eyeCol);
+      }
+    }
+  }
+
+  // Pernas animadas (4 frames)
+  // Aprox. posições base do grid: perna esq ~col 11-15, perna dir ~col 26-30
+  if (isJumping) {
+    // Pernas recolhidas no salto
+    drawRect(x + 12, y + 40, 6, 5, body);
+    drawRect(x + 11, y + 44, 8, 2, body);
+    drawRect(x + 26, y + 40, 6, 5, body);
+    drawRect(x + 25, y + 44, 8, 2, body);
+  } else {
+    // Frame 0: pé esquerdo no chão, direito levantado
+    // Frame 1: transição
+    // Frame 2: pé direito no chão, esquerdo levantado
+    // Frame 3: transição
+    if (legFrame === 0) {
+      // esq baixo / dir cima
+      drawRect(x + 11, y + 40, 6, 5, body);
+      drawRect(x + 10, y + 45, 9, 2, body); // pé esq
+      drawRect(x + 26, y + 39, 6, 4, body);
+      drawRect(x + 25, y + 42, 8, 2, body);
+    } else if (legFrame === 1) {
+      // ambos meio
+      drawRect(x + 12, y + 40, 6, 5, body);
+      drawRect(x + 11, y + 44, 8, 2, body);
+      drawRect(x + 25, y + 40, 6, 5, body);
+      drawRect(x + 24, y + 44, 8, 2, body);
+    } else if (legFrame === 2) {
+      // esq cima / dir baixo
+      drawRect(x + 12, y + 39, 6, 4, body);
+      drawRect(x + 11, y + 42, 8, 2, body);
+      drawRect(x + 25, y + 40, 6, 5, body);
+      drawRect(x + 24, y + 45, 9, 2, body); // pé dir
+    } else {
+      // ambos meio (espelho do 1)
+      drawRect(x + 11, y + 40, 6, 5, body);
+      drawRect(x + 10, y + 44, 8, 2, body);
+      drawRect(x + 26, y + 40, 6, 5, body);
+      drawRect(x + 25, y + 44, 8, 2, body);
+    }
+  }
+}
+
+// Sprites fiéis às imagens enviadas (pixel-art)
+const VIRUS_GRID = [
+  "     #        ",
+  "  #        #  ",
+  " #   #  #   # ",
+  "    ######    ",
+  "#  ########  #",
+  "# ##  ##  ## #",
+  " ###EE##EE### ",
+  " ###EE##EE### ",
+  "  ##########  ",
+  "    ######    ",
+  "     ####     ",
+  "      ##  #   ",
+  "    #     #   ",
+  "    #         "
+];
+const ESPINHO_GRID = [
+  "      1      ",
+  "     112     ",
+  "    34152    ",
+  "   3411552   ",
+  "  331111522  ",
+  " 33111115522 ",
+  "3333311112222"
+];
+const BOLA_GRID = [
+  "    ###    ",
+  "  ### ###  ",
+  " ##     ## ",
+  " #   #   # ",
+  "##  ###  ##",
+  "#  ## ##  #",
+  "#  ## ##  #",
+  "##  ###  ##",
+  " #   #   # ",
+  " ##     ## ",
+  "  ### ###  ",
+  "    ###    "
+];
+const ESPINHO_COLORS = {
+  '1': '#c348d1',
+  '2': '#710f7c',
+  '3': '#a952b3',
+  '4': '#cf92d6',
+  '5': '#92309e'
+};
+const ENEMY_SCALE = 3;
+
+function drawSpriteGrid(grid, x, y, scale, colorMap) {
+  // base inteira: evita pixels “pulando” em alta velocidade
+  const bx = Math.round(x);
+  const by = Math.round(y);
+  for (let row = 0; row < grid.length; row++) {
+    const line = grid[row];
+    for (let col = 0; col < line.length; col++) {
+      const ch = line[col];
+      if (ch === ' ' || ch === undefined) continue;
+      let colr;
+      if (ch === 'E') colr = '#ffffff';
+      else if (colorMap && typeof colorMap === 'object' && colorMap[ch]) colr = colorMap[ch];
+      else if (typeof colorMap === 'string') colr = colorMap;
+      else colr = '#da00b5';
+      ctx.fillStyle = colr;
+      ctx.fillRect(bx + col * scale, by + row * scale, scale, scale);
+    }
+  }
+}
+
+function drawEnemy(e) {
+  if (e.type === 'virus') {
+    drawSpriteGrid(VIRUS_GRID, e.x, e.y, ENEMY_SCALE, '#da00b5');
+  } else if (e.type === 'espinho') {
+    drawSpriteGrid(ESPINHO_GRID, e.x, e.y, ENEMY_SCALE, ESPINHO_COLORS);
+  } else if (e.type === 'bola') {
+    // Raios sutis (antes do sprite)
+    const cx = Math.round(e.x + e.w / 2);
+    const cy = Math.round(e.y + e.h / 2);
+    const pulse = 0.5 + 0.5 * Math.sin(frame * 0.15 + (e.phase || 0));
+    ctx.globalAlpha = 0.28 + pulse * 0.25;
+    ctx.strokeStyle = '#d080f0';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 3; i++) {
+      const ang = frame * 0.08 + i * (Math.PI * 2 / 3) + (e.phase || 0);
+      const len = 10 + pulse * 8 + i * 2;
+      const jx = Math.cos(ang + 0.4) * 3;
+      const jy = Math.sin(ang + 0.4) * 3;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(ang) * len * 0.5 + jx, cy + Math.sin(ang) * len * 0.5 + jy);
+      ctx.lineTo(cx + Math.cos(ang) * len, cy + Math.sin(ang) * len);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = '#e8b0ff';
+    ctx.globalAlpha = 0.22 + pulse * 0.2;
+    for (let i = 0; i < 2; i++) {
+      const ang = -frame * 0.1 + i * Math.PI + (e.phase || 0);
+      const len = 8 + pulse * 6;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(ang) * len, cy + Math.sin(ang) * len);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    drawSpriteGrid(BOLA_GRID, e.x, e.y, ENEMY_SCALE, '#840293');
+  }
+}
+
+function drawCoin(c) {
+  drawRect(c.x + 4, c.y + 4, 16, 16, '#ffdd00');
+  drawRect(c.x + 8, c.y + 8, 8, 8, '#ffaa00');
+  drawRect(c.x + 10, c.y + 6, 4, 4, '#fff');
+}
+
+function drawGround() {
+  const th = theme();
+  drawRect(0, 268, 800, 32, th.ground);
+  drawRect(0, 266, 800, 2, th.purple);
+
+  const tileW = 60;
+  const offset = Math.floor(groundX) % tileW;
+  for (let x = -offset; x < 800 + tileW; x += tileW) {
+    drawRect(x, 268, 30, 4, th.purple);
+    drawRect(x + 10, 280, 20, 4, th.groundLine);
+  }
+}
+
+function isSpawnFree(x, minDist = 48) {
+  // Evita spawnar em cima de inimigos, power-ups ou grupos de moedas
+  for (const e of enemies) {
+    if (Math.abs(e.x - x) < minDist) return false;
+  }
+  for (const p of powerups) {
+    if (Math.abs(p.x - x) < minDist) return false;
+  }
+  for (const c of coins) {
+    if (Math.abs(c.x - x) < minDist) return false;
+  }
+  return true;
+}
+
+function isBolaSpawnFree(x, minDist = 85) {
+  // Bola não spawna perto de outra Bola ou Espinho
+  for (const e of enemies) {
+    if ((e.type === 'bola' || e.type === 'espinho') && Math.abs(e.x - x) < minDist) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function spawnEnemy() {
+  // Raridade: espinho muito comum, vírus e bola comuns
+  const pool = [];
+  for (let i = 0; i < 5; i++) pool.push('espinho'); // muito comum
+  for (let i = 0; i < 2; i++) pool.push('virus');   // comum
+  for (let i = 0; i < 2; i++) pool.push('bola');    // comum
+  const type = pool[Math.floor(Math.random() * pool.length)];
+
+  let x = 820 + Math.random() * 80;
+  for (let tries = 0; tries < 6; tries++) {
+    if (isSpawnFree(x, 48)) break;
+    x = 820 + Math.random() * 120;
+  }
+  if (!isSpawnFree(x, 36)) return;
+
+  if (type === 'bola' && !isBolaSpawnFree(x, 85)) {
+    let ok = false;
+    for (let tries = 0; tries < 8; tries++) {
+      x = 820 + Math.random() * 160;
+      if (isSpawnFree(x, 36) && isBolaSpawnFree(x, 85)) { ok = true; break; }
+    }
+    if (!ok) return;
+  }
+
+  let e = { x: x, type: type };
+
+  if (type === 'virus') {
+    // Anda no chão da direita → esquerda. speedMul > 1 para não parecer ir à direita no chão.
+    e.w = 14 * ENEMY_SCALE;
+    e.h = 14 * ENEMY_SCALE;
+    e.y = 268 - e.h;
+    e.baseY = e.y;
+    e.speedMul = 1.2 + Math.random() * 0.5; // 1.2–1.7× (mínimo razoável)
+    e.dir = -1;
+  } else if (type === 'espinho') {
+    e.w = 13 * ENEMY_SCALE;
+    e.h = 7 * ENEMY_SCALE;
+    e.y = 268 - e.h;
+    e.baseY = e.y;
+    e.speedMul = 1;
+    e.dir = -1;
+  } else if (type === 'bola') {
+    e.w = 11 * ENEMY_SCALE;
+    e.h = 12 * ENEMY_SCALE;
+    e.amp = 24 + Math.random() * 32;
+    e.bobSpeed = 0.04 + Math.random() * 0.06;
+    e.baseY = 130 + Math.random() * 40;
+    e.y = e.baseY;
+    e.phase = Math.random() * Math.PI * 2;
+    e.speedMul = 1;
+    e.dir = -1;
+  }
+
+  enemies.push(e);
+}
+
+function spawnCoin() {
+  // Moedas baixas — o dino pega correndo, sem precisar pular
+  const baseY = 236 + Math.floor(Math.random() * 8);
+  const count = 2 + Math.floor(Math.random() * 3); // 2, 3 ou 4
+
+  // Encontra uma posição X livre (não em cima de inimigo/power-up)
+  let startX = 820 + Math.random() * 40;
+  for (let tries = 0; tries < 8; tries++) {
+    // verifica o centro do grupo
+    const mid = startX + (count - 1) * 14;
+    if (isSpawnFree(mid, 70) && isSpawnFree(startX, 55)) break;
+    startX = 820 + Math.random() * 140;
+  }
+  // se ainda estiver muito ocupado, desiste
+  if (!isSpawnFree(startX, 45)) return;
+
+  for (let i = 0; i < count; i++) {
+    coins.push({
+      x: startX + i * 28,
+      y: baseY,
+      w: 24,
+      h: 24,
+      collected: false
+    });
+  }
+}
+
+function spawnPowerup() {
+  // Pesa os tipos:
+  // - se já tem o power-up ativo → chance cai drasticamente
+  // - firewall é naturalmente mais raro
+  const weights = {
+    shield: player.hasShield ? 0.08 : 1.0,
+    rocket: player.hasDoubleJump ? 0.08 : 1.0,
+    firewall: 0.35   // bem mais raro que os outros
+  };
+  const pool = [];
+  for (const t of ['shield', 'rocket', 'firewall']) {
+    const w = Math.round(weights[t] * 20);
+    for (let i = 0; i < w; i++) pool.push(t);
+  }
+  if (pool.length === 0) return;
+  const type = pool[Math.floor(Math.random() * pool.length)];
+
+  // Sempre na mesma altura, pouco acima do chão (pega sem pular)
+  const baseY = 230;
+
+  let x = 820 + Math.random() * 90;
+  for (let tries = 0; tries < 6; tries++) {
+    if (isSpawnFree(x, 80)) break;
+    x = 820 + Math.random() * 130;
+  }
+  if (!isSpawnFree(x, 55)) return;
+
+  powerups.push({
+    x: x,
+    y: baseY,
+    baseY: baseY,
+    w: 32,
+    h: 34,
+    type: type,
+    bob: Math.random() * Math.PI * 2
+  });
+}
+
+function activateFirewall() {
+  // Lança uma parede de fogo que avança para a direita
+  firewalls.push({
+    x: player.x + 50,
+    y: 100,
+    w: 40,
+    h: 170,
+    life: 180,      // vai mais longe
+    speed: speed + 5
+  });
+  playTone(200, 0.15, 'sawtooth', 0.15, 400);
+  playTone(300, 0.2, 'square', 0.1, 100);
+}
+
+function update() {
+  if (gameState !== 'playing') return;
+
+  frame++;
+  // Score: Overclock aumenta um pouco o ganho
+  scoreAcc += player.hasDoubleJump ? 1.35 : 1;
+  score = Math.floor(scoreAcc / 5);
+  setScoreDisplay(score);
+  updateInvertTheme();
+
+  // Velocidade base + pequeno boost do Overclock
+  speed = 6 + Math.floor(score / 200);
+  if (player.hasDoubleJump) speed += 0.9;
+
+  groundX += speed;
+  // evita número muito grande após longas runs
+  if (groundX > 100000) groundX = groundX % 60;
+
+  // Timers dos power-ups
+  if (player.hasShield) {
+    player.shieldTimer--;
+    if (player.shieldTimer <= 0) player.hasShield = false;
+  }
+  if (player.hasDoubleJump) {
+    player.doubleJumpTimer--;
+    if (player.doubleJumpTimer <= 0) {
+      player.hasDoubleJump = false;
+      player.canDoubleJump = false;
+    }
+  }
+
+  // Rastro de fogo animado dos pés (Overclock) — direita → esquerda
+  if (player.hasDoubleJump && frame % 2 === 0) {
+    const footY = player.grounded ? player.y + 46 : player.y + 48;
+    const flicker = Math.floor(frame / 2) % 4;
+    for (const ox of [12, 26]) {
+      // base da chama (tamanho e posição alternam)
+      particles.push({
+        x: player.x + ox + (Math.random() - 0.5) * 2,
+        y: footY + (flicker % 2),
+        vx: -(1.8 + Math.random() * 1.2),
+        vy: (Math.random() - 0.5) * 0.6,
+        life: 10 + Math.floor(Math.random() * 6),
+        maxLife: 16,
+        color: '#ff8800',
+        size: 3 + (flicker === 0 || flicker === 2 ? 1 : 0),
+        trail: true
+      });
+      // faísca intercalada (mais clara e rápida)
+      if (frame % 4 === (ox === 12 ? 0 : 2)) {
+        particles.push({
+          x: player.x + ox + 2,
+          y: footY - 1 + Math.random() * 2,
+          vx: -(2.5 + Math.random() * 1.5),
+          vy: -0.3 + Math.random() * 0.6,
+          life: 6 + Math.floor(Math.random() * 4),
+          maxLife: 10,
+          color: '#ffff66',
+          size: 2,
+          trail: true
+        });
+      }
+    }
+  }
+
+  // Física do player
+  player.vy += 0.65;
+  player.y += player.vy;
+  if (player.y >= 220) {
+    player.y = 220;
+    player.vy = 0;
+    player.grounded = true;
+    player.jumpsUsed = 0;
+    player.canDoubleJump = player.hasDoubleJump; // reseta para poder pular duplo de novo
+  }
+  player.anim = frame;
+
+  // Spawns quase independentes (timers separados)
+  spawnTimerEnemy++;
+  spawnTimerCoin++;
+  spawnTimerPower++;
+
+  // Inimigos
+  const enemyRate = Math.max(38, 78 - Math.floor(score / 85));
+  if (spawnTimerEnemy > enemyRate) {
+    spawnTimerEnemy = 0;
+    spawnEnemy();
+    if (Math.random() < 0.15) spawnEnemy(); // chance baixa de segundo
+  }
+
+  // Moedas (grupos)
+  const coinRate = Math.max(45, 90 - Math.floor(score / 100));
+  if (spawnTimerCoin > coinRate) {
+    spawnTimerCoin = 0;
+    spawnCoin();
+  }
+
+  // Power-ups
+  const powerRate = Math.max(90, 160 - Math.floor(score / 120));
+  if (spawnTimerPower > powerRate) {
+    spawnTimerPower = 0;
+    spawnPowerup();
+  }
+
+  // ===== POWER-UPS no chão =====
+  for (let i = powerups.length - 1; i >= 0; i--) {
+    const p = powerups[i];
+    p.x -= speed;
+    p.bob += 0.12;
+    // Mantém a altura base + leve flutuação
+    if (!p.baseY) p.baseY = p.y;
+    // bob bem sutil — mantém altura pegável sem pular
+    p.y = p.baseY + Math.sin(p.bob) * 2;
+
+    if (playerCollides(p)) {
+      // Ativa o power-up
+      if (p.type === 'shield') {
+        player.hasShield = true;
+        player.shieldTimer = 480; // ~8 segundos
+        bringPowerRowToTop('power-av');
+        playTone(600, 0.1, 'square', 0.12);
+        playTone(800, 0.15, 'square', 0.1);
+      } else if (p.type === 'rocket') {
+        player.hasDoubleJump = true;
+        player.doubleJumpTimer = 600; // ~10 segundos
+        player.canDoubleJump = true;
+        bringPowerRowToTop('power-oc');
+        playTone(400, 0.08, 'square', 0.12, 700);
+      } else if (p.type === 'firewall') {
+        activateFirewall();
+      }
+      // partículas de coleta
+      for (let k = 0; k < 10; k++) {
+        particles.push({
+          x: p.x + 14,
+          y: p.y + 14,
+          vx: (Math.random() - 0.5) * 7,
+          vy: (Math.random() - 0.5) * 7,
+          life: 22,
+          color: p.type === 'shield' ? '#00ffcc' : p.type === 'rocket' ? '#ff6600' : '#ff3300'
+        });
+      }
+      powerups.splice(i, 1);
+    } else if (p.x < -40) {
+      powerups.splice(i, 1);
+    }
+  }
+
+  // ===== FIREWALLS ativas =====
+  for (let i = firewalls.length - 1; i >= 0; i--) {
+    const f = firewalls[i];
+    f.x += f.speed * 0.6; // avança para a frente
+    f.life--;
+
+    // Destrói inimigos que tocam
+    for (let j = enemies.length - 1; j >= 0; j--) {
+      if (enemyCollidesRect(enemies[j], f)) {
+        // explosão
+        for (let k = 0; k < 8; k++) {
+          particles.push({
+            x: enemies[j].x + 16,
+            y: enemies[j].y + 16,
+            vx: (Math.random() - 0.5) * 8,
+            vy: (Math.random() - 0.5) * 8,
+            life: 18,
+            color: '#ff4400'
+          });
+        }
+        enemies.splice(j, 1);
+        runBits += 1;
+        setBitsDisplay(totalBits + runBits);
+        playTone(150 + Math.random() * 100, 0.08, 'sawtooth', 0.08);
+      }
+    }
+
+    if (f.life <= 0 || f.x > 1200) {
+      firewalls.splice(i, 1);
+    }
+  }
+
+  // ===== Inimigos =====
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+    // Sempre da direita para a esquerda na tela
+    let mul = Math.abs(e.speedMul || 1);
+    if (e.type === 'virus') mul = Math.max(1.2, mul); // nunca mais lento que o chão
+    e.x -= Math.abs(speed) * mul;
+
+    if (e.type === 'bola') {
+      e.y = e.baseY + Math.sin(frame * e.bobSpeed + e.phase) * e.amp;
+    }
+
+    // Rastro sutil do Vírus (cores magenta)
+    if (e.type === 'virus' && frame % 3 === 0) {
+      particles.push({
+        x: e.x + e.w * 0.6 + Math.random() * 6,
+        y: e.y + e.h * 0.4 + Math.random() * e.h * 0.4,
+        vx: 1.2 + Math.random() * 1.5, // para a direita (atrás do vírus)
+        vy: (Math.random() - 0.5) * 0.8,
+        life: 10 + Math.floor(Math.random() * 8),
+        maxLife: 18,
+        color: Math.random() > 0.5 ? '#da00b5' : '#ff66dd',
+        size: 2 + Math.floor(Math.random() * 2),
+        trail: true,
+        virusTrail: true
+      });
+    }
+
+    if (playerCollides(e)) {
+      if (player.hasShield) {
+        // Escudo absorve o hit
+        player.hasShield = false;
+        player.shieldTimer = 0;
+        // Efeito de vidro quebrando (cacos sutis)
+        for (let k = 0; k < 16; k++) {
+          const ang = (Math.PI * 2 * k) / 16 + Math.random() * 0.4;
+          const sp = 2 + Math.random() * 4;
+          particles.push({
+            x: player.x + 22 + (Math.random() - 0.5) * 20,
+            y: player.y + 20 + (Math.random() - 0.5) * 24,
+            vx: Math.cos(ang) * sp,
+            vy: Math.sin(ang) * sp - 1,
+            life: 18 + Math.floor(Math.random() * 12),
+            maxLife: 30,
+            color: Math.random() > 0.5 ? '#aaffff' : '#00ffcc',
+            size: 2 + Math.floor(Math.random() * 3),
+            shard: true,
+            rot: Math.random() * Math.PI,
+            spin: (Math.random() - 0.5) * 0.3
+          });
+        }
+        // brilhos brancos extras
+        for (let k = 0; k < 6; k++) {
+          particles.push({
+            x: player.x + 22,
+            y: player.y + 20,
+            vx: (Math.random() - 0.5) * 6,
+            vy: (Math.random() - 0.5) * 6,
+            life: 12,
+            color: '#ffffff',
+            size: 2
+          });
+        }
+        playTone(900, 0.1, 'square', 0.15);
+        playTone(400, 0.15, 'sawtooth', 0.1);
+        enemies.splice(i, 1);
+        runBits += 1;
+        setBitsDisplay(totalBits + runBits);
+      } else {
+        gameOver();
+        return;
+      }
+    }
+
+    if (e.x < -50) enemies.splice(i, 1);
+  }
+
+  // Moedas
+  for (let i = coins.length - 1; i >= 0; i--) {
+    const c = coins[i];
+    c.x -= speed;
+    if (playerCollides(c)) {
+      runBits += 1;
+      // Atualiza HUD na hora (total salvo + bits desta run)
+      setBitsDisplay(totalBits + runBits);
+      playCoin();
+      for (let p = 0; p < 6; p++) {
+        particles.push({
+          x: c.x + 12,
+          y: c.y + 12,
+          vx: (Math.random() - 0.5) * 6,
+          vy: (Math.random() - 0.5) * 6,
+          life: 20
+        });
+      }
+      coins.splice(i, 1);
+    } else if (c.x < -30) {
+      coins.splice(i, 1);
+    }
+  }
+
+  // Partículas
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life--;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function rectCollide(a, b) {
+  return a.x < b.x + b.w &&
+         a.x + a.w > b.x &&
+         a.y < b.y + b.h &&
+         a.y + a.h > b.y;
+}
+
+// Círculo (cx,cy,r) vs retângulo AABB
+function circleRectCollide(cx, cy, r, rect) {
+  const nearestX = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
+  const nearestY = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
+  const dx = cx - nearestX;
+  const dy = cy - nearestY;
+  return dx * dx + dy * dy <= r * r;
+}
+
+// Triângulo do Espinho: ponta no topo, base embaixo
+function getEspinhoTriangle(e) {
+  return {
+    x1: e.x + e.w / 2,  // topo (ponta)
+    y1: e.y,
+    x2: e.x,            // base esq
+    y2: e.y + e.h,
+    x3: e.x + e.w,      // base dir
+    y3: e.y + e.h
+  };
+}
+
+function pointInTriangle(px, py, t) {
+  const { x1, y1, x2, y2, x3, y3 } = t;
+  const d = (y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3);
+  if (Math.abs(d) < 1e-6) return false;
+  const a = ((y2 - y3) * (px - x3) + (x3 - x2) * (py - y3)) / d;
+  const b = ((y3 - y1) * (px - x3) + (x1 - x3) * (py - y3)) / d;
+  const c = 1 - a - b;
+  return a >= 0 && b >= 0 && c >= 0;
+}
+
+function segmentsIntersect(ax, ay, bx, by, cx, cy, dx, dy) {
+  const den = (bx - ax) * (dy - cy) - (by - ay) * (dx - cx);
+  if (Math.abs(den) < 1e-6) return false;
+  const u = ((cx - ax) * (dy - cy) - (cy - ay) * (dx - cx)) / den;
+  const v = ((cx - ax) * (by - ay) - (cy - ay) * (bx - ax)) / den;
+  return u >= 0 && u <= 1 && v >= 0 && v <= 1;
+}
+
+// Triângulo vs retângulo AABB
+function triangleRectCollide(t, rect) {
+  // algum canto do retângulo dentro do triângulo
+  const corners = [
+    [rect.x, rect.y],
+    [rect.x + rect.w, rect.y],
+    [rect.x, rect.y + rect.h],
+    [rect.x + rect.w, rect.y + rect.h]
+  ];
+  for (const [px, py] of corners) {
+    if (pointInTriangle(px, py, t)) return true;
+  }
+  // vértices do triângulo dentro do retângulo
+  const verts = [[t.x1, t.y1], [t.x2, t.y2], [t.x3, t.y3]];
+  for (const [px, py] of verts) {
+    if (px >= rect.x && px <= rect.x + rect.w && py >= rect.y && py <= rect.y + rect.h) return true;
+  }
+  // arestas se cruzam
+  const edgesT = [[t.x1, t.y1, t.x2, t.y2], [t.x2, t.y2, t.x3, t.y3], [t.x3, t.y3, t.x1, t.y1]];
+  const edgesR = [
+    [rect.x, rect.y, rect.x + rect.w, rect.y],
+    [rect.x + rect.w, rect.y, rect.x + rect.w, rect.y + rect.h],
+    [rect.x + rect.w, rect.y + rect.h, rect.x, rect.y + rect.h],
+    [rect.x, rect.y + rect.h, rect.x, rect.y]
+  ];
+  for (const te of edgesT) {
+    for (const re of edgesR) {
+      if (segmentsIntersect(te[0], te[1], te[2], te[3], re[0], re[1], re[2], re[3])) return true;
+    }
+  }
+  return false;
+}
+
+// Duas hitboxes do dino: cabeça + corpo (sem rabo nem pés inteiros)
+function getPlayerHitboxes() {
+  const head = {
+    x: player.x + 22,
+    y: player.y + 2,
+    w: 20,
+    h: 15
+  };
+  const body = {
+    x: player.x + 8,
+    y: player.y + 16,
+    w: 22,
+    h: 22
+  };
+  return [head, body];
+}
+
+function playerCollides(obj) {
+  const boxes = getPlayerHitboxes();
+  // Bola: hitbox circular
+  if (obj.type === 'bola') {
+    const cx = obj.x + obj.w / 2;
+    const cy = obj.y + obj.h / 2;
+    const r = Math.min(obj.w, obj.h) * 0.42;
+    for (let i = 0; i < boxes.length; i++) {
+      if (circleRectCollide(cx, cy, r, boxes[i])) return true;
+    }
+    return false;
+  }
+  // Espinho: hitbox triangular
+  if (obj.type === 'espinho') {
+    const tri = getEspinhoTriangle(obj);
+    for (let i = 0; i < boxes.length; i++) {
+      if (triangleRectCollide(tri, boxes[i])) return true;
+    }
+    return false;
+  }
+  // Demais (vírus, power-ups, moedas): AABB
+  for (let i = 0; i < boxes.length; i++) {
+    if (rectCollide(boxes[i], obj)) return true;
+  }
+  return false;
+}
+
+// Colisão generica inimigo vs retângulo (firewall etc.)
+function enemyCollidesRect(e, rect) {
+  if (e.type === 'bola') {
+    const cx = e.x + e.w / 2;
+    const cy = e.y + e.h / 2;
+    const r = Math.min(e.w, e.h) * 0.42;
+    return circleRectCollide(cx, cy, r, rect);
+  }
+  if (e.type === 'espinho') {
+    return triangleRectCollide(getEspinhoTriangle(e), rect);
+  }
+  return rectCollide(e, rect);
+}
+
+// Sprites dos power-ups (fiéis às imagens)
+const SHIELD_GRID = [
+  " 1222222221 ",
+  "111111111111",
+  "311122221113",
+  "331444444133",
+  "333444444333",
+  "333344443333",
+  " 3333443333 ",
+  " 5333333335 ",
+  "  53333335  ",
+  "   533335   ",
+  "    5555    "
+];
+const SHIELD_COLORS = {
+  '1': '#007884', '2': '#78b4b4', '3': '#00606c', '4': '#849c9c', '5': '#0c4854'
+};
+const OVERCLOCK_GRID = [
+  "    1221     ",
+  "  1 11121 1  ",
+  " 12  122111  ",
+  " 12 1222 121 ",
+  " 1212232 121 ",
+  " 1222333221  ",
+  " 11233433211 ",
+  "122334543321 ",
+  "1233455543321",
+  "2334555554332",
+  "3333345433333",
+  " 222344432222",
+  "  2233333222 ",
+  "   2333332   ",
+  "    33333    ",
+  "     333     "
+];
+const OVERCLOCK_COLORS = {
+  '1': '#9c3c0c', '2': '#d88400', '3': '#d8c000', '4': '#fce400', '5': '#fcf090'
+};
+const FIREWALL_PU_GRID = [
+  "          1   ",
+  "   1  11  1   ",
+  " 1   12211   1",
+  "  11112222111 ",
+  " 122222222222 ",
+  "12234433443221",
+  "12443344334422",
+  "12334433443322",
+  "12443344334422",
+  "2233443344332 ",
+  "2244334433442 ",
+  "2233443344332 ",
+  " 24433443344  ",
+  "  3344334433  ",
+  "  4433443344  ",
+  "   34433443   "
+];
+const FIREWALL_PU_COLORS = {
+  '1': '#902400', '2': '#d83c0c', '3': '#780c00', '4': '#a81800'
+};
+const POWER_SCALE = 2;
+
+function drawPowerup(p) {
+  const y = p.y;
+  const cx = p.x + p.w / 2;
+  const cy = y + p.h / 2;
+
+  // Auras coloridas por tipo (mantidas após score 300)
+  let glow = 'rgba(80, 200, 210, 0.18)';
+  let glow2 = 'rgba(200, 245, 250, 0.11)';
+  if (p.type === 'rocket') {
+    glow = 'rgba(252, 228, 0, 0.12)';
+    glow2 = 'rgba(255, 250, 210, 0.11)';
+  } else if (p.type === 'firewall') {
+    glow = 'rgba(255, 120, 70, 0.16)';
+    glow2 = 'rgba(255, 210, 190, 0.11)';
+  }
+  // Pós-300: troca o brilho claro/branco por aura preta mais forte
+  if (invertT > 0.5) {
+    glow2 = 'rgba(0, 0, 0, 0.32)';
+  }
+
+  const size = 40;
+  const angle = frame * 0.006 + p.bob;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+  ctx.fillStyle = glow;
+  ctx.fillRect(-size / 2, -size / 2, size, size);
+  ctx.restore();
+
+  // Aura menor, giro anti-horário
+  const size2 = 26;
+  const angle2 = -frame * 0.0035 - p.bob * 0.4;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle2);
+  ctx.fillStyle = glow2;
+  ctx.fillRect(-size2 / 2, -size2 / 2, size2, size2);
+  ctx.restore();
+
+  // Brilho branco no centro só no tema normal
+  if (invertT <= 0.5) {
+    const corePulse = 1 + Math.sin(frame * 0.2 + p.bob) * 0.5;
+    drawRect(cx - 2 - corePulse * 0.3, cy - 2 - corePulse * 0.3, 4 + corePulse * 0.6, 4 + corePulse * 0.6, 'rgba(255, 255, 255, 0.35)');
+    drawRect(cx - 1, cy - 1, 2, 2, 'rgba(255, 255, 255, 0.75)');
+  }
+
+  if (p.type === 'shield') {
+    const gw = 12 * POWER_SCALE, gh = 11 * POWER_SCALE;
+    drawSpriteGrid(SHIELD_GRID, p.x + (p.w - gw) / 2, y + (p.h - gh) / 2, POWER_SCALE, SHIELD_COLORS);
+  } else if (p.type === 'rocket') {
+    const gw = 13 * POWER_SCALE, gh = 16 * POWER_SCALE;
+    drawSpriteGrid(OVERCLOCK_GRID, p.x + (p.w - gw) / 2, y + (p.h - gh) / 2, POWER_SCALE, OVERCLOCK_COLORS);
+  } else if (p.type === 'firewall') {
+    const gw = 14 * POWER_SCALE, gh = 16 * POWER_SCALE;
+    drawSpriteGrid(FIREWALL_PU_GRID, p.x + (p.w - gw) / 2, y + (p.h - gh) / 2, POWER_SCALE, FIREWALL_PU_COLORS);
+  }
+}
+
+function drawFirewall(f) {
+  // Parede de fogo vertical
+  const alpha = Math.min(1, f.life / 30);
+  // camadas de fogo
+  drawRect(f.x, f.y, f.w, f.h, '#ff2200');
+  drawRect(f.x + 6, f.y + 10, f.w - 12, f.h - 20, '#ff6600');
+  drawRect(f.x + 12, f.y + 20, f.w - 24, f.h - 40, '#ffaa00');
+  // partículas de fogo no topo
+  if (frame % 3 === 0) {
+    drawRect(f.x + Math.random() * f.w, f.y - 4, 6, 8, '#ffff00');
+  }
+}
+
+function draw() {
+  const th = theme();
+  ctx.fillStyle = th.dark;
+  ctx.fillRect(0, 0, 800, 300);
+
+  // Estrelas de fundo (parallax da direita → esquerda)
+  for (let i = 0; i < 28; i++) {
+    let sx = (i * 97 - frame * 0.35) % 800;
+    if (sx < 0) sx += 800;
+    const sy = (i * 53) % 200;
+    drawRect(sx, sy, 2, 2, th.star);
+  }
+
+  drawGround();
+  coins.forEach(drawCoin);
+  powerups.forEach(drawPowerup);
+  enemies.forEach(drawEnemy);
+  firewalls.forEach(drawFirewall);
+
+  // Dino
+  drawDino(player.x, player.y, player.anim, !player.grounded);
+
+  // Hitboxes do dino (amarelas)
+  const hboxes = getPlayerHitboxes();
+  ctx.strokeStyle = '#ffff00';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < hboxes.length; i++) {
+    const hb = hboxes[i];
+    ctx.strokeRect(Math.round(hb.x), Math.round(hb.y), hb.w, hb.h);
+  }
+
+  // Hitboxes dos inimigos (vermelho)
+  ctx.strokeStyle = '#ff3333';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < enemies.length; i++) {
+    const e = enemies[i];
+    if (e.type === 'bola') {
+      const cx = Math.round(e.x + e.w / 2);
+      const cy = Math.round(e.y + e.h / 2);
+      const r = Math.round(Math.min(e.w, e.h) * 0.42);
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (e.type === 'espinho') {
+      const t = getEspinhoTriangle(e);
+      ctx.beginPath();
+      ctx.moveTo(Math.round(t.x1), Math.round(t.y1));
+      ctx.lineTo(Math.round(t.x2), Math.round(t.y2));
+      ctx.lineTo(Math.round(t.x3), Math.round(t.y3));
+      ctx.closePath();
+      ctx.stroke();
+    } else {
+      ctx.strokeRect(Math.round(e.x), Math.round(e.y), e.w, e.h);
+    }
+  }
+
+  // Hitboxes dos power-ups (ciano)
+  ctx.strokeStyle = '#00ffff';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < powerups.length; i++) {
+    const p = powerups[i];
+    ctx.strokeRect(Math.round(p.x), Math.round(p.y), p.w, p.h);
+  }
+
+  // Indicador visual de escudo (aura + feixe de luz estilo lente)
+  if (player.hasShield) {
+    const pulse = Math.sin(frame * 0.2) * 2;
+    const sx = player.x - 4 + pulse;
+    const sy = player.y - 4 + pulse;
+    const sw = player.w + 8 - pulse * 2;
+    const sh = player.h + 8 - pulse * 2;
+    ctx.strokeStyle = '#00ffcc';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(sx, sy, sw, sh);
+    // Feixe de luz sutil (reflexo de lente)
+    const t = (Math.sin(frame * 0.08) + 1) / 2;
+    const beamAlpha = 0.12 + t * 0.18;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(sx, sy, sw, sh);
+    ctx.clip();
+    // diagonal principal
+    ctx.strokeStyle = `rgba(255, 255, 255, ${beamAlpha})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(sx + sw * 0.15, sy + sh * 0.1);
+    ctx.lineTo(sx + sw * 0.85, sy + sh * 0.9);
+    ctx.stroke();
+    // feixe fino paralelo
+    ctx.strokeStyle = `rgba(180, 255, 255, ${beamAlpha * 0.7})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(sx + sw * 0.25, sy + sh * 0.05);
+    ctx.lineTo(sx + sw * 0.95, sy + sh * 0.75);
+    ctx.stroke();
+    // brilho pontual
+    const bx = sx + sw * (0.3 + t * 0.15);
+    const by = sy + sh * (0.25 + t * 0.1);
+    ctx.fillStyle = `rgba(255, 255, 255, ${0.2 + t * 0.25})`;
+    ctx.fillRect(bx, by, 3, 3);
+    ctx.restore();
+  }
+
+  // Efeito Overclock nos pés (apenas ao andar no chão)
+  if (player.hasDoubleJump && player.grounded) {
+    const flicker = Math.floor(frame / 3) % 3;
+    // Fogo horizontal saindo dos pés (direita → esquerda)
+    const lx = player.x + 14;
+    const ly = player.y + 45;
+    const len = 12 + flicker;
+    drawRect(lx - len, ly, len, 3, '#ff4400');
+    drawRect(lx - len + 1, ly + 1, len - 2, 2, '#ff6600');
+    drawRect(lx - len + 2, ly, len - 4 + (flicker > 0 ? 2 : 0), 2, '#ffaa00');
+    if (flicker !== 2) drawRect(lx - len, ly + 1, 3, 1, '#ffff66');
+
+    const rx = player.x + 28;
+    const ry = player.y + 45;
+    drawRect(rx - len, ry, len, 3, '#ff4400');
+    drawRect(rx - len + 1, ry + 1, len - 2, 2, '#ff6600');
+    drawRect(rx - len + 2, ry, len - 4 + (flicker > 0 ? 2 : 0), 2, '#ffaa00');
+    if (flicker !== 0) drawRect(rx - len, ry + 1, 3, 1, '#ffff66');
+  }
+
+  // Partículas
+  particles.forEach(p => {
+    const s = p.size || 4;
+    if (p.shard) {
+      // caco de vidro
+      if (p.spin) p.rot = (p.rot || 0) + p.spin;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot || 0);
+      const alpha = p.maxLife ? Math.max(0.15, p.life / p.maxLife) : 0.8;
+      ctx.fillStyle = p.color || '#aaffff';
+      ctx.globalAlpha = alpha;
+      ctx.fillRect(-s, -1, s * 2, 2);
+      ctx.fillRect(-1, -s * 0.6, 2, s * 1.2);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    } else if (p.trail && p.maxLife) {
+      const t = p.life / p.maxLife;
+      const sz = Math.max(1, Math.ceil(s * t));
+      let col;
+      if (p.virusTrail) {
+        // rastro do vírus — magenta/rosa
+        col = t > 0.6 ? '#ff66dd' : t > 0.3 ? '#da00b5' : '#9a0080';
+      } else if (p.color === '#ffff66') {
+        col = t > 0.5 ? '#ffff66' : t > 0.25 ? '#ffaa00' : '#ff6600';
+      } else {
+        col = t > 0.65 ? '#ffcc44' : t > 0.35 ? '#ff8800' : t > 0.15 ? '#ff5500' : '#cc3300';
+      }
+      drawRect(p.x, p.y, sz, sz, col);
+    } else {
+      drawRect(p.x, p.y, s, s, p.color || '#ffdd00');
+    }
+  });
+
+  // HUD de power-ups (no canvas, abaixo dos BITS)
+  const hudX = 610;
+  let hudY = 36;
+  const barW = 120;
+  const barH = 5;
+
+  function drawPowerHud(label, color, timer, maxTimer) {
+    const ratio = Math.max(0, Math.min(1, timer / maxTimer));
+    ctx.fillStyle = 'rgba(10, 0, 20, 0.55)';
+    ctx.fillRect(hudX - 4, hudY - 2, barW + 28, 18);
+    drawRect(hudX, hudY + 2, 10, 10, color);
+    drawRect(hudX + 14, hudY + 5, barW, barH, '#1a0033');
+    drawRect(hudX + 14, hudY + 5, Math.floor(barW * ratio), barH, color);
+    ctx.fillStyle = color;
+    ctx.font = '8px "Press Start 2P"';
+    ctx.fillText(label, hudX + 14, hudY + 3);
+    hudY += 20;
+  }
+
+  // Power HUD no canvas só no desktop; no mobile fica na HTML externa
+  if (!isMobileLayout()) {
+    if (player.hasShield) {
+      drawPowerHud('ANTIVÍRUS', '#00ffcc', player.shieldTimer, 480);
+    }
+    if (player.hasDoubleJump) {
+      drawPowerHud('OVERCLOCK', '#ff6600', player.doubleJumpTimer, 600);
+    }
+  }
+  updateHtmlPowerHud();
+}
+
+
+
+function loop() {
+  update();
+  draw();
+  if (gameState === 'playing') {
+    requestAnimationFrame(loop);
+  }
+}
+
+// Tela inicial
+draw();
+
+</script>
+</body>
+</html>
