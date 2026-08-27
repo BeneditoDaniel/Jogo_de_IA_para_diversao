@@ -130,14 +130,12 @@
     text-shadow: 2px 2px 0 #000;
     color: #b894d4;
   }
-  /* Após score 300 (tema invertido): letras pretas */
+  /* Ambiente 2: mesmo tamanho do ambiente 1, só preto (sem borda) */
   body.theme-inverted #ui {
     color: #000000;
-    text-shadow:
-      0.5px 0 0 #fff,
-      -0.5px 0 0 #fff,
-      0 0.5px 0 #fff,
-      0 -0.5px 0 #fff;
+    font-size: 10px;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
   }
   #start-screen, #game-over, #pause-menu {
     position: fixed;
@@ -150,6 +148,77 @@
     text-align: center;
     z-index: 30;
     overflow: hidden;
+  }
+  /* Tela de morte do Shhh — congelada e bugada */
+  #game-over.shhh-death {
+    background: rgba(0, 0, 0, 0.72);
+    mix-blend-mode: normal;
+  }
+  #game-over.shhh-death::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 255, 80, 0.04) 2px,
+        rgba(0, 255, 80, 0.04) 3px
+      );
+    pointer-events: none;
+    z-index: 0;
+  }
+  #game-over.shhh-death > *:not(.shhh-phrase) {
+    position: relative;
+    z-index: 2;
+  }
+  /* Texto do menu com o mesmo ghost roxo/verde das frases */
+  #game-over.shhh-death h1,
+  #game-over.shhh-death p,
+  #game-over.shhh-death .score-row p,
+  #game-over.shhh-death #new-record {
+    color: #b894d4;
+    text-shadow:
+      3px 0 0 rgba(160, 50, 210, 0.65),
+      -3px 0 0 rgba(0, 200, 100, 0.55),
+      5px 1px 0 rgba(120, 40, 160, 0.4),
+      -4px -1px 0 rgba(0, 160, 80, 0.35),
+      0 2px 0 rgba(140, 60, 180, 0.3),
+      0 0 8px rgba(130, 50, 170, 0.35),
+      0 0 14px rgba(0, 140, 80, 0.2);
+  }
+  #game-over.shhh-death h1 {
+    transform: scaleX(1.15);
+    filter: none;
+  }
+  #game-over.shhh-death p,
+  #game-over.shhh-death .score-row p {
+    color: #9a7ab0;
+  }
+  #game-over.shhh-death #new-record {
+    color: #c9a0e0;
+  }
+  #game-over.shhh-death .btn {
+    border-color: #6b3d8f;
+    color: #c9a0e0;
+    box-shadow:
+      2px 0 0 rgba(160, 50, 210, 0.5),
+      -2px 0 0 rgba(0, 180, 90, 0.4),
+      2px 2px 0 #000;
+    text-shadow:
+      2px 0 0 rgba(160, 50, 210, 0.55),
+      -2px 0 0 rgba(0, 200, 100, 0.45);
+    z-index: 3;
+  }
+  .shhh-phrase {
+    position: absolute;
+    z-index: 1;
+    pointer-events: none;
+    font-family: 'Press Start 2P', monospace;
+    white-space: nowrap;
+    opacity: 0.55;
+    user-select: none;
   }
   h1 {
     font-size: 22px;
@@ -514,9 +583,9 @@ const INV = {
   groundLine: GROUND      // faixas
 };
 
-// Fator de inversão 0→1 com transição suave a partir do score 300
+// Fator de inversão 0→1 com transição suave a partir do score 1000
 let invertT = 0;
-const INVERT_SCORE = 300;
+const INVERT_SCORE = 1000;
 const INVERT_DURATION = 90; // frames (~1.5s)
 
 function hexToRgb(hex) {
@@ -549,7 +618,7 @@ function theme() {
   };
 }
 function updateInvertTheme() {
-  // Alvo: 0 se score < 300, 1 se score >= 300
+  // Alvo: 0 se score < 1000, 1 se score >= 1000
   const target = score >= INVERT_SCORE ? 1 : 0;
   const step = 1 / INVERT_DURATION;
   if (invertT < target) invertT = Math.min(target, invertT + step);
@@ -649,6 +718,9 @@ let frame = 0;
 let spawnTimerEnemy = 0;
 let spawnTimerCoin = 0;
 let spawnTimerPower = 0;
+let spawnTimerMinhoca = 0;
+let spawnTimerBolaV2 = 0;
+let spawnTimerEspinho = 0;
 let groundX = 0;
 
 // Player (dino) - dimensões próximas ao original Google (44x47)
@@ -707,6 +779,9 @@ function resetGame() {
   spawnTimerEnemy = 0;
   spawnTimerCoin = 0;
   spawnTimerPower = 0;
+  spawnTimerMinhoca = 0;
+  spawnTimerBolaV2 = 0;
+  spawnTimerEspinho = 0;
   groundX = 0;
   enemies = [];
   coins = [];
@@ -714,6 +789,12 @@ function resetGame() {
   powerups = [];
   firewalls = [];
   popupActive = false;
+  shhhActive = false;
+  shhhTimer = 0;
+  shhhGlitches = [];
+  shhhSpawnTimer = 0;
+  shhhDying = false;
+  shhhDieFlash = 0;
   player.y = 220;
   player.vy = 0;
   player.grounded = true;
@@ -730,6 +811,14 @@ function resetGame() {
 
 let canRestartAt = 0; // timestamp: só reinicia após a morte quando Date.now() >= canRestartAt
 
+// Loop com timestep fixo (~60 UPS) — evita acelerar em telas 90/120 Hz (ex.: Galaxy A34)
+const FIXED_DT = 1000 / 60;
+let loopRunning = false;
+let lastFrameTime = 0;
+let updateAccumulator = 0;
+let lastTouchAt = 0;
+let lastGroundJumpAt = 0;
+
 function startGame() {
   // Delay silencioso após morte (sem indicativo visual)
   if (gameState === 'over' && Date.now() < canRestartAt) return;
@@ -740,8 +829,127 @@ function startGame() {
   document.getElementById('start-screen').classList.add('hidden');
   document.getElementById('game-over').classList.add('hidden');
   document.getElementById('pause-menu').classList.add('hidden');
+  clearShhhDeathPhrases();
+  diedFromShhh = false;
   setMobilePauseVisible(true);
-  requestAnimationFrame(loop);
+  // Um único loop; reinicia o relógio do timestep
+  lastFrameTime = 0;
+  updateAccumulator = 0;
+  if (!loopRunning) {
+    loopRunning = true;
+    requestAnimationFrame(loop);
+  }
+}
+
+let diedFromShhh = false;
+
+function clearShhhDeathPhrases() {
+  const go = document.getElementById('game-over');
+  if (!go) return;
+  go.classList.remove('shhh-death');
+  go.querySelectorAll('.shhh-phrase').forEach(el => el.remove());
+}
+
+function buildShhhDeathPhrases() {
+  const go = document.getElementById('game-over');
+  if (!go) return;
+  clearShhhDeathPhrases();
+  go.classList.add('shhh-death');
+
+  // Mesmas frases do menu de morte (repetidas / glitchadas)
+  const phrases = [
+    'GAME OVER', 'GAME OVER', 'GAME OVER', 'GAME OVER',
+    'Score: ' + score, 'Score: ' + score, 'Score: ' + score,
+    'Bits coletados nesta run: ' + runBits,
+    'Bits coletados nesta run: ' + runBits,
+    'Total de Bits: ' + totalBits, 'Total de Bits: ' + totalBits,
+    'JOGAR NOVAMENTE', 'JOGAR NOVAMENTE', 'JOGAR NOVAMENTE',
+    'NOVO RECORDE!', 'NOVO RECORDE!'
+  ];
+  // Tons de roxo (com glitch sutil verde/roxo no ghost)
+  const colors = ['#9a70b8', '#b894d4', '#7a5098', '#c9a0e0', '#8a60a8', '#6b4a80'];
+  const ghostGreen = 'rgba(0, 200, 100, 0.55)';
+  const ghostPurple = 'rgba(160, 50, 210, 0.65)';
+
+  // Escala suave: telas menores não encolhem tanto vs. maiores
+  const vw = window.innerWidth || 400;
+  const vh = window.innerHeight || 700;
+  const area = vw * vh;
+  const raw = Math.sqrt(area / 400000);
+  const scale = Math.min(1.55, Math.max(0.92, 0.75 + raw * 0.4));
+  const count = Math.round((17 + Math.random() * 6) * scale);
+  const baseMin = Math.max(8, Math.round(12 * scale));
+  const baseMax = Math.max(baseMin + 3, Math.round(20 * scale));
+
+  for (let i = 0; i < count; i++) {
+    const el = document.createElement('span');
+    el.className = 'shhh-phrase';
+    el.textContent = phrases[Math.floor(Math.random() * phrases.length)];
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    el.style.color = color;
+    el.style.left = (Math.random() * 92) + '%';
+    el.style.top = (Math.random() * 90) + '%';
+    const size = baseMin + Math.floor(Math.random() * (baseMax - baseMin + 1));
+    el.style.fontSize = size + 'px';
+    // sem rotação — só escala leve
+    const sx = 0.9 + Math.random() * 0.9;
+    const sy = 0.95 + Math.random() * 0.25;
+    el.style.transform = `translate(-50%, -50%) scale(${sx}, ${sy})`;
+    el.style.opacity = String(0.28 + Math.random() * 0.4);
+    // ghost mais forte: várias camadas roxo + verde deslocadas
+    const gx = 2 + Math.floor(Math.random() * 4);
+    const gy = 1 + Math.floor(Math.random() * 2);
+    el.style.textShadow = [
+      `${gx}px 0 0 ${ghostPurple}`,
+      `${-gx}px 0 0 ${ghostGreen}`,
+      `${gx + 3}px ${gy}px 0 rgba(120, 40, 160, 0.4)`,
+      `${-(gx + 2)}px ${-gy}px 0 rgba(0, 160, 80, 0.35)`,
+      `0 ${gy + 1}px 0 rgba(140, 60, 180, 0.3)`,
+      `0 0 8px rgba(130, 50, 170, 0.35)`,
+      `0 0 14px rgba(0, 140, 80, 0.2)`
+    ].join(', ');
+    if (Math.random() > 0.75) {
+      el.style.letterSpacing = (1 + Math.random() * 4) + 'px';
+    }
+    go.appendChild(el);
+  }
+}
+
+function freezeCanvasShhhGlitch() {
+  // Congela o canvas num estado bem bugado (uma vez)
+  try {
+    const img = ctx.getImageData(0, 0, 800, 300);
+    // faixas deslocadas
+    for (let k = 0; k < 14; k++) {
+      const y = Math.floor(Math.random() * 290);
+      const h = 2 + Math.floor(Math.random() * 12);
+      const dx = (Math.random() - 0.5) * 40;
+      ctx.drawImage(canvas, 0, y, 800, h, dx, y, 800, h);
+    }
+    // ruído de pixels verdes/roxos
+    ctx.globalAlpha = 0.35;
+    for (let i = 0; i < 120; i++) {
+      ctx.fillStyle = Math.random() > 0.5 ? '#00ff66' : '#a040e0';
+      ctx.fillRect(Math.random() * 800, Math.random() * 300, 1 + Math.random() * 4, 1 + Math.random() * 2);
+    }
+    // scanlines
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = '#00ff66';
+    for (let y = 0; y < 300; y += 3) ctx.fillRect(0, y, 800, 1);
+    // blocos de cor
+    ctx.globalAlpha = 0.15;
+    for (let i = 0; i < 8; i++) {
+      ctx.fillStyle = Math.random() > 0.5 ? '#00ff66' : '#8020c0';
+      ctx.fillRect(Math.random() * 700, Math.random() * 260, 20 + Math.random() * 80, 3 + Math.random() * 10);
+    }
+    ctx.globalAlpha = 1;
+    // vinheta escura
+    const g = ctx.createRadialGradient(400, 150, 40, 400, 150, 420);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(1, 'rgba(0,0,0,0.55)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 800, 300);
+  } catch (e) {}
 }
 
 function gameOver() {
@@ -773,15 +981,34 @@ function gameOver() {
     nr.classList.remove('show');
   }
 
-  document.getElementById('game-over').classList.remove('hidden');
+  const go = document.getElementById('game-over');
+  if (diedFromShhh) {
+    freezeCanvasShhhGlitch();
+    buildShhhDeathPhrases();
+    playTone(50, 0.3, 'sawtooth', 0.2);
+    playTone(120, 0.2, 'square', 0.15);
+  } else {
+    clearShhhDeathPhrases();
+  }
+
+  go.classList.remove('hidden');
 }
 
 // Controles
 function jump() {
   if (gameState !== 'playing') return;
 
-  // Pulo normal (do chão)
+  // Durante Shhh: qualquer pulo = morte com glitch (escudo não protege)
+  if (shhhActive) {
+    triggerShhhDeath();
+    return;
+  }
+
+  // Pulo normal (do chão) — pequeno cooldown evita “engolir” toques em 120 Hz
   if (player.grounded) {
+    const now = performance.now();
+    if (now - lastGroundJumpAt < 90) return;
+    lastGroundJumpAt = now;
     player.vy = player.jumpPower;
     player.grounded = false;
     player.jumpsUsed = 1;
@@ -810,6 +1037,9 @@ function jump() {
 function pauseGame() {
   if (gameState !== 'playing') return;
   gameState = 'paused';
+  loopRunning = false;
+  lastFrameTime = 0;
+  updateAccumulator = 0;
   document.getElementById('pause-score').textContent = score;
   document.getElementById('pause-bits').textContent = runBits;
   document.getElementById('pause-menu').classList.remove('hidden');
@@ -821,7 +1051,12 @@ function resumeGame() {
   gameState = 'playing';
   document.getElementById('pause-menu').classList.add('hidden');
   setMobilePauseVisible(true);
-  requestAnimationFrame(loop);
+  lastFrameTime = 0;
+  updateAccumulator = 0;
+  if (!loopRunning) {
+    loopRunning = true;
+    requestAnimationFrame(loop);
+  }
 }
 
 function restartFromPause() {
@@ -864,8 +1099,10 @@ function isUiControl(el) {
 function handlePointer(e) {
   const target = e.target;
   if (isUiControl(target)) return;
-  // Clique no X do pop-up (coordenadas do canvas) — se não for no X, o jogo segue (pode pular)
-  if (popupActive && window._popupXBtn) {
+  // Em touch devices o browser também dispara mouse ~300ms depois — ignora
+  if (e.type === 'mousedown' && performance.now() - lastTouchAt < 700) return;
+  // Pop-up ativo: X fecha; qualquer clique na área do pop-up não faz o dino pular
+  if (popupActive && window._popupBounds) {
     const rect = canvas.getBoundingClientRect();
     const clientX = e.clientX ?? (e.touches && e.touches[0] && e.touches[0].clientX);
     const clientY = e.clientY ?? (e.touches && e.touches[0] && e.touches[0].clientY);
@@ -875,9 +1112,13 @@ function handlePointer(e) {
       const mx = (clientX - rect.left) * scaleX;
       const my = (clientY - rect.top) * scaleY;
       const b = window._popupXBtn;
-      if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) {
+      if (b && mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) {
         closePopup();
         return;
+      }
+      const pb = window._popupBounds;
+      if (mx >= pb.x && mx <= pb.x + pb.w && my >= pb.y && my <= pb.y + pb.h) {
+        return; // dentro do pop-up: não pula
       }
     }
   }
@@ -887,10 +1128,16 @@ function handlePointer(e) {
 
 document.addEventListener('mousedown', handlePointer);
 document.addEventListener('touchstart', e => {
+  lastTouchAt = performance.now();
   if (isUiControl(e.target)) return;
   e.preventDefault();
   handlePointer(e);
 }, { passive: false });
+// Evita scroll/pinça acelerarem ou “puxarem” a página no meio do jogo
+document.addEventListener('touchmove', e => {
+  if (gameState === 'playing' || popupActive) e.preventDefault();
+}, { passive: false });
+document.addEventListener('gesturestart', e => e.preventDefault());
 
 // ========== DESENHO PIXEL ART ==========
 function drawRect(x, y, w, h, color) {
@@ -1064,6 +1311,14 @@ const ESPINHO_COLORS = {
   '4': '#cf92d6',
   '5': '#92309e'
 };
+// Ambiente 2 — tons mais escuros
+const ESPINHO_COLORS_DARK = {
+  '1': '#5a2068',
+  '2': '#2a0a32',
+  '3': '#4a1854',
+  '4': '#6e3a78',
+  '5': '#3a1044'
+};
 const ENEMY_SCALE = 3;
 
 // ===== Sprites pós-300 =====
@@ -1133,6 +1388,20 @@ const DOWNLOAD_COLORS = { '1': '#003000', '2': '#006010', '3': '#00d020' };
 // Pop-up "Virus Detectado" ativo
 let popupActive = false;
 let popupGlitch = 0;
+const POPUP_IMG = new Image();
+POPUP_IMG.src = 'data:image/png;base64,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';
+
+// ===== Shhh (ambiente 2 — raríssimo) =====
+const SHHH_IMG = new Image();
+SHHH_IMG.src = 'data:image/png;base64,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';
+let shhhActive = false;
+let shhhTimer = 0;
+let shhhGlitches = [];
+let shhhSpawnTimer = 0;
+let shhhDying = false;
+let shhhDieFlash = 0;
+
+
 
 function drawSpriteGrid(grid, x, y, scale, colorMap) {
   const bx = Math.round(x);
@@ -1157,7 +1426,8 @@ function drawEnemy(e) {
   if (e.type === 'virus') {
     drawSpriteGrid(VIRUS_GRID, e.x, e.y, ENEMY_SCALE, '#da00b5');
   } else if (e.type === 'espinho') {
-    drawSpriteGrid(ESPINHO_GRID, e.x, e.y, ENEMY_SCALE, ESPINHO_COLORS);
+    const cols = (score >= INVERT_SCORE || invertT > 0.5) ? ESPINHO_COLORS_DARK : ESPINHO_COLORS;
+    drawSpriteGrid(ESPINHO_GRID, e.x, e.y, ENEMY_SCALE, cols);
   } else if (e.type === 'bola') {
     const cx = Math.round(e.x + e.w / 2);
     const cy = Math.round(e.y + e.h / 2);
@@ -1299,47 +1569,58 @@ function isBolaSpawnFree(x, minDist = 85) {
   return true;
 }
 
+function spawnMinhoca() {
+  // Só no lado direito, apontando para a esquerda
+  const face = 'left';
+  const hw = 10 * 3, hh = 11 * 3;
+  const x = isMobileLayout() ? 740 : 785;
+  const y = 40 + Math.random() * 180;
+  enemies.push({
+    type: 'minhoca', x, y, w: hw, h: hh,
+    face, state: 'peek', timer: 90 + Math.floor(Math.random() * 60),
+    speedMul: 0, dirX: -1, dirY: 0,
+    segments: [],
+    chargeMul: 1.35 + Math.random() * 0.45
+  });
+}
+
+function spawnBolaV2() {
+  let x = 820 + Math.random() * 80;
+  if (!isSpawnFree(x, 60)) return;
+  const bw = 15 * 3, bh = 15 * 3;
+  const fieldOn = Math.random() > 0.45;
+  enemies.push({
+    type: 'bolav2', x, y: 80 + Math.random() * 100,
+    w: bw, h: bh, baseY: 80 + Math.random() * 100,
+    amp: 30 + Math.random() * 40, bobSpeed: 0.03 + Math.random() * 0.04,
+    phase: Math.random() * Math.PI * 2,
+    speedMul: 1.15 + Math.random() * 0.35,
+    fieldOn: fieldOn,
+    fieldTimer: 55 + Math.floor(Math.random() * 25)
+  });
+}
+
+function spawnEspinho() {
+  let x = 820 + Math.random() * 80;
+  for (let tries = 0; tries < 6; tries++) {
+    if (isSpawnFree(x, 48)) break;
+    x = 820 + Math.random() * 120;
+  }
+  if (!isSpawnFree(x, 36)) return;
+  const w = 13 * ENEMY_SCALE;
+  const h = 7 * ENEMY_SCALE;
+  enemies.push({
+    type: 'espinho',
+    x, y: 268 - h, baseY: 268 - h,
+    w, h, speedMul: 1, dir: -1
+  });
+}
+
 function spawnEnemy() {
   const post300 = score >= INVERT_SCORE;
 
-  // Pós-300: só Minhoca, BolaV2 (comuns) e Pop-up via download falso (raro, em spawnPowerup)
-  if (post300) {
-    // limpa inimigos antigos que ainda restarem
-    enemies = enemies.filter(e => e.type === 'minhoca' || e.type === 'bolav2');
-
-    const pool = [];
-    for (let i = 0; i < 3; i++) pool.push('minhoca');
-    for (let i = 0; i < 3; i++) pool.push('bolav2');
-    const type = pool[Math.floor(Math.random() * pool.length)];
-
-    if (type === 'minhoca') {
-      // Só no lado direito, apontando para a esquerda
-      const face = 'left';
-      const hw = 10 * 3, hh = 11 * 3;
-      const x = 785; // um pouco para a direita na borda
-      const y = 40 + Math.random() * 180;
-      enemies.push({
-        type: 'minhoca', x, y, w: hw, h: hh,
-        face, state: 'peek', timer: 90 + Math.floor(Math.random() * 60),
-        speedMul: 0, dirX: -1, dirY: 0,
-        segments: [], chargeSpeed: 14 + Math.random() * 4
-      });
-      return;
-    }
-
-    // bolav2
-    let x = 820 + Math.random() * 80;
-    if (!isSpawnFree(x, 60)) return;
-    const bw = 15 * 3, bh = 15 * 3;
-    enemies.push({
-      type: 'bolav2', x, y: 80 + Math.random() * 100,
-      w: bw, h: bh, baseY: 80 + Math.random() * 100,
-      amp: 30 + Math.random() * 40, bobSpeed: 0.03 + Math.random() * 0.04,
-      phase: Math.random() * Math.PI * 2, speedMul: 0.85 + Math.random() * 0.25,
-      fieldOn: true, fieldTimer: 100 + Math.floor(Math.random() * 40)
-    });
-    return;
-  }
+  // Pós-300: spawns independentes (chamados pelos timers separados)
+  if (post300) return;
 
   // Pré-300: inimigos originais
   const pool = [];
@@ -1485,16 +1766,33 @@ function update() {
   if (popupActive) popupGlitch++;
 
   frame++;
-  // Score: Overclock aumenta um pouco o ganho
-  scoreAcc += player.hasDoubleJump ? 1.35 : 1;
-  score = Math.floor(scoreAcc / 5);
-  setScoreDisplay(score);
-  updateInvertTheme();
 
-  // Ao cruzar 300, remove inimigos do mundo antigo
-  if (score >= INVERT_SCORE) {
-    enemies = enemies.filter(e => e.type === 'minhoca' || e.type === 'bolav2');
+  // Shhh ativo: score congelado, conta timer e termina
+  if (shhhActive) {
+    shhhTimer--;
+    if (shhhDying) {
+      shhhDieFlash++;
+      if (shhhDieFlash > 18) {
+        shhhDying = false;
+        shhhActive = false;
+        diedFromShhh = true;
+        gameOver();
+        return;
+      }
+    } else if (shhhTimer <= 0) {
+      // sai abruptamente
+      shhhActive = false;
+      shhhTimer = 0;
+      playTone(80, 0.15, 'sawtooth', 0.12);
+    }
+    // sem score, sem spawns — física do dino ainda roda abaixo
+  } else {
+    // Score: Overclock aumenta um pouco o ganho
+    scoreAcc += player.hasDoubleJump ? 1.35 : 1;
+    score = Math.floor(scoreAcc / 5);
+    setScoreDisplay(score);
   }
+  updateInvertTheme();
 
   // Velocidade base + pequeno boost do Overclock
   speed = 6 + Math.floor(score / 200);
@@ -1564,31 +1862,69 @@ function update() {
   player.anim = frame;
 
   // Spawns quase independentes (timers separados)
-  spawnTimerEnemy++;
-  spawnTimerCoin++;
-  spawnTimerPower++;
+  if (!shhhActive) {
+    spawnTimerEnemy++;
+    spawnTimerCoin++;
+    spawnTimerPower++;
+    shhhSpawnTimer++;
 
-  // Inimigos
-  const enemyRate = Math.max(38, 78 - Math.floor(score / 85));
-  if (spawnTimerEnemy > enemyRate) {
-    spawnTimerEnemy = 0;
-    spawnEnemy();
-    if (Math.random() < 0.15) spawnEnemy(); // chance baixa de segundo
+    // Inimigos — ambiente 2: timers independentes
+    if (score >= INVERT_SCORE) {
+      spawnTimerMinhoca++;
+      spawnTimerBolaV2++;
+      spawnTimerEspinho++;
+      // Minhoca um pouco menos frequente
+      const minhocaRate = Math.max(90, 150 - Math.floor(score / 120));
+      if (spawnTimerMinhoca > minhocaRate) {
+        spawnTimerMinhoca = 0;
+        spawnMinhoca();
+      }
+      // BolaV2 mais frequente
+      const bolav2Rate = Math.max(50, 95 - Math.floor(score / 100));
+      if (spawnTimerBolaV2 > bolav2Rate) {
+        spawnTimerBolaV2 = 0;
+        spawnBolaV2();
+        if (Math.random() < 0.2) spawnBolaV2();
+      }
+      // Espinho — ambiente 2, mais comum que antes (ainda abaixo de BolaV2)
+      const espinhoRate = Math.max(70, 120 - Math.floor(score / 110));
+      if (spawnTimerEspinho > espinhoRate) {
+        spawnTimerEspinho = 0;
+        spawnEspinho();
+        if (Math.random() < 0.25) spawnEspinho();
+      }
+    } else {
+      const enemyRate = Math.max(38, 78 - Math.floor(score / 85));
+      if (spawnTimerEnemy > enemyRate) {
+        spawnTimerEnemy = 0;
+        spawnEnemy();
+        if (Math.random() < 0.15) spawnEnemy();
+      }
+    }
+
+    // Moedas (grupos)
+    const coinRate = Math.max(45, 90 - Math.floor(score / 100));
+    if (spawnTimerCoin > coinRate) {
+      spawnTimerCoin = 0;
+      spawnCoin();
+    }
+
+    // Power-ups
+    const powerRate = Math.max(90, 160 - Math.floor(score / 120));
+    if (spawnTimerPower > powerRate) {
+      spawnTimerPower = 0;
+      spawnPowerup();
+    }
+
+    // Shhh glitch no mapa — ambiente 2, raridade muito muito rara
+    if (score >= INVERT_SCORE && shhhSpawnTimer > 200) {
+      shhhSpawnTimer = 0;
+      if (Math.random() < 0.035) spawnShhhGlitch();
+    }
   }
 
-  // Moedas (grupos)
-  const coinRate = Math.max(45, 90 - Math.floor(score / 100));
-  if (spawnTimerCoin > coinRate) {
-    spawnTimerCoin = 0;
-    spawnCoin();
-  }
-
-  // Power-ups
-  const powerRate = Math.max(90, 160 - Math.floor(score / 120));
-  if (spawnTimerPower > powerRate) {
-    spawnTimerPower = 0;
-    spawnPowerup();
-  }
+  // Atualiza glitches do mapa (antes de ativar Shhh)
+  updateShhhGlitches();
 
   // ===== POWER-UPS no chão =====
   for (let i = powerups.length - 1; i >= 0; i--) {
@@ -1685,9 +2021,11 @@ function update() {
       } else if (e.state === 'shake' && e.timer <= 0) {
         e.state = 'charge';
       } else if (e.state === 'charge') {
-        e.x += e.dirX * e.chargeSpeed;
-        e.y += e.dirY * e.chargeSpeed;
-        // segmentos colados atrás da cabeça (espaçamento ~18px)
+        // velocidade proporcional ao chão (fica mais rápida no decorrer da run)
+        const chargeSpd = Math.abs(speed) * (e.chargeMul || 1.5);
+        e.x += e.dirX * chargeSpd;
+        e.y += e.dirY * chargeSpd;
+        // segmentos colados atrás da cabeça
         const gap = 18;
         const bodyW = 13 * 2;
         e.segments = [];
@@ -1709,7 +2047,10 @@ function update() {
       e.fieldTimer--;
       if (e.fieldTimer <= 0) {
         e.fieldOn = !e.fieldOn;
-        e.fieldTimer = e.fieldOn ? (90 + Math.floor(Math.random() * 50)) : (70 + Math.floor(Math.random() * 40));
+        // Tempos mais curtos e com menos variação entre ligado/desligado
+        e.fieldTimer = e.fieldOn
+          ? (50 + Math.floor(Math.random() * 20))
+          : (45 + Math.floor(Math.random() * 18));
       }
       if (e.fieldOn && frame % 2 === 0) {
         const cx = e.x + e.w / 2, cy = e.y + e.h / 2;
@@ -1756,10 +2097,10 @@ function update() {
       }
     }
 
-    // Minhoca só colide no charge; BolaV2 sempre (campo é visual + hit)
+    // Minhoca só colide no charge (cabeça + corpo); BolaV2 sempre
     if (e.type === 'minhoca' && e.state !== 'charge') {
       // sem colisão no peek/shake
-    } else if (playerCollides(e)) {
+    } else if (playerCollides(e) || (e.type === 'minhoca' && minhocaBodyHitsPlayer(e))) {
       if (player.hasShield) {
         // Escudo absorve o hit
         player.hasShield = false;
@@ -1942,6 +2283,23 @@ function getPlayerHitboxes() {
   return [head, body];
 }
 
+// Corpo da Minhoca também mata (segmentos atrás da cabeça)
+function minhocaBodyHitsPlayer(e) {
+  if (!e.segments || !e.segments.length) return false;
+  const boxes = getPlayerHitboxes();
+  // sprite do corpo: 13×12 em scale 2 → 26×24
+  const bw = 13 * 2;
+  const bh = 12 * 2;
+  for (let s = 0; s < e.segments.length; s++) {
+    const sg = e.segments[s];
+    const segBox = { x: sg.x, y: sg.y, w: bw, h: bh };
+    for (let i = 0; i < boxes.length; i++) {
+      if (rectCollide(boxes[i], segBox)) return true;
+    }
+  }
+  return false;
+}
+
 function playerCollides(obj) {
   const boxes = getPlayerHitboxes();
   // Bola / BolaV2: hitbox circular (BolaV2 com campo ligado usa raio dos raios)
@@ -2119,54 +2477,352 @@ function drawPowerup(p) {
   }
 }
 
+
+function spawnShhhGlitch() {
+  // Uma única forma: nuvem sutil de partículas roxas/verdes “bugando”
+  // Em telas menores: um pouco mais visível (leve)
+  const mobile = isMobileLayout();
+  const x = 820 + Math.random() * 100;
+  const y = 60 + Math.random() * 150;
+  const w = (mobile ? 40 : 36) + Math.random() * (mobile ? 30 : 28);
+  const h = (mobile ? 44 : 40) + Math.random() * (mobile ? 30 : 30);
+  const bits = [];
+  const n = (mobile ? 15 : 14) + Math.floor(Math.random() * 9);
+  for (let i = 0; i < n; i++) {
+    bits.push({
+      ox: Math.random() * w,
+      oy: Math.random() * h,
+      sz: 1 + Math.floor(Math.random() * 2),
+      green: Math.random() > 0.45,
+      spd: 0.1 + Math.random() * 0.25,
+      phase: Math.random() * Math.PI * 2
+    });
+  }
+  shhhGlitches.push({
+    x, y, w, h,
+    life: 380 + Math.floor(Math.random() * 220),
+    phase: Math.random() * Math.PI * 2,
+    bits,
+    mobileBoost: mobile
+  });
+}
+
+function activateShhh() {
+  if (shhhActive) return;
+  shhhActive = true;
+  shhhTimer = 280; // ~4.5s a 60 UPS
+  shhhDying = false;
+  shhhDieFlash = 0;
+  // remove tudo do mapa
+  enemies = [];
+  coins = [];
+  powerups = [];
+  firewalls = [];
+  shhhGlitches = [];
+  particles = [];
+  playTone(60, 0.4, 'sawtooth', 0.18);
+  playTone(40, 0.5, 'square', 0.12);
+}
+
+function triggerShhhDeath() {
+  if (shhhDying) return;
+  shhhDying = true;
+  shhhDieFlash = 0;
+  // muitos efeitos de glitch no dino
+  for (let i = 0; i < 40; i++) {
+    particles.push({
+      x: player.x + 20 + (Math.random() - 0.5) * 40,
+      y: player.y + 24 + (Math.random() - 0.5) * 40,
+      vx: (Math.random() - 0.5) * 10,
+      vy: (Math.random() - 0.5) * 10,
+      life: 12 + Math.floor(Math.random() * 16),
+      color: Math.random() > 0.5 ? '#00ff66' : '#c040ff',
+      size: 2 + Math.floor(Math.random() * 4)
+    });
+  }
+  playTone(200, 0.1, 'square', 0.15);
+  playTone(90, 0.25, 'sawtooth', 0.18);
+}
+
+function updateShhhGlitches() {
+  for (let i = shhhGlitches.length - 1; i >= 0; i--) {
+    const g = shhhGlitches[i];
+    g.x -= speed;
+    g.life--;
+    g.phase += 0.15;
+    if (g.life <= 0 || g.x < -60) {
+      shhhGlitches.splice(i, 1);
+      continue;
+    }
+    // colisão com o dino ativa o Shhh
+    if (!shhhActive && playerCollides(g)) {
+      activateShhh();
+      return;
+    }
+  }
+}
+
+function drawShhhGlitches() {
+  // Único visual: partículas sutis roxas/verdes “bugando”
+  const mobile = isMobileLayout();
+  for (const g of shhhGlitches) {
+    if (!g.bits) continue;
+    const boost = g.mobileBoost || mobile;
+    for (let i = 0; i < g.bits.length; i++) {
+      const b = g.bits[i];
+      b.phase += b.spd;
+      // micro-tremor tipo glitch
+      const jx = Math.sin(b.phase * 2.1) * 2 + (Math.random() - 0.5) * 1.2;
+      const jy = Math.cos(b.phase * 1.7) * 1.6 + (Math.random() - 0.5) * 1;
+      const alpha = (boost ? 0.30 : 0.32) + (boost ? 0.17 : 0.2) * Math.sin(b.phase + g.phase);
+      ctx.globalAlpha = Math.max(boost ? 0.17 : 0.18, alpha);
+      ctx.fillStyle = b.green
+        ? (Math.random() > 0.7 ? '#50ff9a' : '#00d868')
+        : (Math.random() > 0.7 ? '#d070ff' : '#9028c0');
+      const px = Math.round(g.x + b.ox + jx);
+      const py = Math.round(g.y + b.oy + jy);
+      const sz = boost ? b.sz + (Math.random() > 0.6 ? 1 : 0) : b.sz;
+      ctx.fillRect(px, py, sz, sz);
+      // traço curto ocasional (1 frame de “bug”)
+      if ((frame + i + g.life) % (boost ? 9 : 8) === 0) {
+        ctx.globalAlpha = boost ? 0.22 : 0.28;
+        ctx.fillRect(px, py, sz + (boost ? 5 : 5), 1);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawShhhOverlay() {
+  // Fundo preto + clareia um pouco longe do centro (ainda escuro)
+  const size = 260;
+  const cx = 400;
+  const topY = 0; // ponta superior do sprite na borda do retângulo
+  const cy = topY + size / 2; // centro da imagem (para o gradiente)
+  const grd = ctx.createRadialGradient(cx, cy, 40, cx, cy, 420);
+  grd.addColorStop(0, 'rgba(0,0,0,0.95)');
+  grd.addColorStop(0.35, 'rgba(5,0,10,0.92)');
+  grd.addColorStop(0.7, 'rgba(12,4,18,0.88)');
+  grd.addColorStop(1, 'rgba(18,8,24,0.85)');
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, 800, 300);
+
+  // Imagem grande — topo colado na borda superior do retângulo
+  if (SHHH_IMG.complete && SHHH_IMG.naturalWidth > 0) {
+    ctx.imageSmoothingEnabled = false;
+    // fantasmas RGB orgânicos
+    if (frame % 5 < 2) {
+      ctx.globalAlpha = 0.2;
+      ctx.drawImage(SHHH_IMG, cx - size / 2 - 4, topY, size, size);
+      ctx.globalAlpha = 0.15;
+      ctx.drawImage(SHHH_IMG, cx - size / 2 + 3, topY + 2, size, size);
+    }
+    ctx.globalAlpha = 0.95;
+    ctx.drawImage(SHHH_IMG, cx - size / 2, topY, size, size);
+    ctx.globalAlpha = 1;
+  }
+
+  // Glitch orgânico espalhado por toda a tela
+  drawShhhScreenGlitch();
+}
+
+function drawShhhScreenGlitch() {
+  const t = frame;
+
+  // scanlines irregulares
+  ctx.globalAlpha = 0.05;
+  ctx.fillStyle = '#00ff66';
+  for (let y = (t % 5); y < 300; y += 3 + (y % 5)) {
+    if ((y + t) % 7 === 0) continue;
+    ctx.fillRect(0, y, 800, 1);
+  }
+  ctx.globalAlpha = 1;
+
+  // faixas horizontais que “andam” de forma irregular
+  for (let i = 0; i < 5; i++) {
+    if ((t + i * 3) % 6 > 3) continue;
+    const y = ((t * (3 + i) + i * 67) % 290);
+    const h = 1 + (i % 3);
+    const xOff = Math.sin(t * 0.08 + i) * 20;
+    ctx.globalAlpha = 0.07 + (i % 2) * 0.04;
+    ctx.fillStyle = i % 2 === 0 ? '#00ff70' : '#9020c0';
+    ctx.fillRect(xOff, y, 800, h);
+    // pedaços quebrados da faixa
+    if ((t + i) % 4 === 0) {
+      ctx.globalAlpha = 0.12;
+      ctx.fillRect(100 + (t * 13 + i * 40) % 600, y - 1, 40 + (i * 17) % 80, h + 2);
+    }
+  }
+  ctx.globalAlpha = 1;
+
+  // blocos de ruído espalhados organicamente
+  for (let i = 0; i < 12; i++) {
+    const n = (t * 0.7 + i * 47.3);
+    const bx = (Math.sin(n * 0.11) * 0.5 + 0.5) * 780;
+    const by = (Math.cos(n * 0.09 + i) * 0.5 + 0.5) * 280;
+    if ((t + i * 2) % 5 === 0) continue;
+    ctx.globalAlpha = 0.06 + (i % 3) * 0.02;
+    ctx.fillStyle = i % 3 === 0 ? '#00ff55' : i % 3 === 1 ? '#a040e0' : '#40ffaa';
+    const bw = 8 + (i * 5) % 30;
+    const bh = 1 + (i % 4);
+    ctx.fillRect(bx, by, bw, bh);
+    if (i % 4 === 0) {
+      ctx.fillRect(bx + 2, by + 3, bw * 0.5, 1);
+    }
+  }
+  ctx.globalAlpha = 1;
+
+  // colunas de sinal (verticais finas, posições orgânicas)
+  for (let i = 0; i < 3; i++) {
+    if ((t + i * 5) % 8 > 3) continue;
+    const cx2 = ((t * (11 + i * 3) + i * 120) % 800);
+    ctx.globalAlpha = 0.05;
+    ctx.fillStyle = i === 1 ? '#b040ff' : '#00e060';
+    ctx.fillRect(cx2, 0, 1 + (i % 2), 300);
+    // “quebra” na coluna
+    ctx.globalAlpha = 0.1;
+    ctx.fillRect(cx2 - 4, (t * 7 + i * 50) % 280, 10, 3);
+  }
+  ctx.globalAlpha = 1;
+
+  // flash orgânico ocasional (verde ou roxo)
+  if (t % 19 < 1) {
+    ctx.globalAlpha = 0.06;
+    ctx.fillStyle = '#00ff60';
+    ctx.fillRect(0, 0, 800, 300);
+  } else if (t % 27 < 1) {
+    ctx.globalAlpha = 0.05;
+    ctx.fillStyle = '#8010b0';
+    ctx.fillRect(0, 0, 800, 300);
+  }
+  ctx.globalAlpha = 1;
+
+  // bordas “chorando” glitch (canto superior/inferior)
+  ctx.globalAlpha = 0.08;
+  ctx.fillStyle = '#00ff66';
+  for (let i = 0; i < 6; i++) {
+    const x = (t * 5 + i * 130) % 800;
+    const h = 4 + Math.sin(t * 0.1 + i) * 8 + 8;
+    ctx.fillRect(x, 0, 2, h);
+    ctx.fillRect((x + 90) % 800, 300 - h, 2, h);
+  }
+  ctx.globalAlpha = 1;
+}
+
+
 function closePopup() {
   popupActive = false;
   playTone(200, 0.08, 'square', 0.1);
 }
 
 function drawVirusPopup() {
-  // Janela grande no centro do retângulo
-  const pw = 420, ph = 240;
-  let px = (800 - pw) / 2, py = (300 - ph) / 2;
-  // glitch offset
+  // Sprite fiel à imagem — menos alto verticalmente
+  const mobile = isMobileLayout();
+  const pw = mobile ? 420 : 400;
+  // altura reduzida (antes seguia proporção cheia ~0.78)
+  const ph = Math.round(pw * 0.58);
+  let px = (800 - pw) / 2;
+  let py = (300 - ph) / 2;
   popupGlitch++;
-  if (popupGlitch % 7 === 0) px += (Math.random() - 0.5) * 6;
-  if (popupGlitch % 11 === 0) py += (Math.random() - 0.5) * 4;
+  // trepidação um pouco mais forte
+  if (popupGlitch % 5 === 0) px += (Math.random() - 0.5) * 8;
+  if (popupGlitch % 7 === 0) py += (Math.random() - 0.5) * 5;
+  if (popupGlitch % 13 === 0) px += (Math.random() > 0.5 ? 6 : -6);
 
-  // sombra
+  // sombra de fundo
   ctx.fillStyle = 'rgba(0,0,0,0.55)';
   ctx.fillRect(0, 0, 800, 300);
 
-  // moldura
-  ctx.fillStyle = '#2a0030';
-  ctx.fillRect(px - 4, py - 4, pw + 8, ph + 8);
-  // título
-  ctx.fillStyle = '#4a1058';
-  ctx.fillRect(px, py, pw, 28);
-  // corpo
-  ctx.fillStyle = '#6b1a8a';
-  ctx.fillRect(px, py + 28, pw, ph - 28);
-  // botão X
-  const xb = px + pw - 28, yb = py + 4;
-  ctx.fillStyle = '#c0a0c8';
-  ctx.fillRect(xb, yb, 22, 20);
-  ctx.fillStyle = '#ff2244';
-  ctx.font = '14px "Press Start 2P"';
-  ctx.fillText('X', xb + 4, yb + 16);
-  // guarda área do X para clique
-  window._popupXBtn = { x: xb, y: yb, w: 22, h: 20 };
+  ctx.imageSmoothingEnabled = false;
+  const drawX = Math.round(px);
+  const drawY = Math.round(py);
 
-  // texto glitch
-  ctx.font = '22px "Press Start 2P"';
-  const gOff = (popupGlitch % 5 === 0) ? (Math.random() - 0.5) * 4 : 0;
-  ctx.fillStyle = '#00e030';
-  ctx.fillText('Virus', px + 40 + gOff, py + 100);
-  ctx.fillText('Detectado', px + 40 - gOff, py + 160);
-  // linhas de glitch
-  if (popupGlitch % 6 < 2) {
-    ctx.fillStyle = 'rgba(0,255,80,0.25)';
-    ctx.fillRect(px, py + 50 + (popupGlitch * 3) % (ph - 40), pw, 3);
+  if (POPUP_IMG.complete && POPUP_IMG.naturalWidth > 0) {
+    // Camadas de glitch coloridas (verde + roxo)
+    const gShift = 3 + Math.floor(Math.random() * 5);
+    const pShift = 2 + Math.floor(Math.random() * 4);
+
+    // canal “verde” deslocado
+    ctx.save();
+    ctx.globalAlpha = 0.4;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.drawImage(POPUP_IMG, drawX - gShift, drawY, pw, ph);
+    // tingir com overlay verde nas faixas
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 0.22;
+    ctx.fillStyle = '#00ff55';
+    for (let i = 0; i < 3; i++) {
+      const gy = drawY + ((popupGlitch * 7 + i * 37) % Math.max(8, ph - 6));
+      ctx.fillRect(drawX, gy, pw, 2 + (i % 2));
+    }
+    // canal roxo deslocado
+    ctx.globalAlpha = 0.28;
+    ctx.fillStyle = '#c040ff';
+    for (let i = 0; i < 2; i++) {
+      const gy = drawY + ((popupGlitch * 11 + i * 53) % Math.max(8, ph - 8));
+      ctx.fillRect(drawX + (i === 0 ? -pShift : pShift), gy, pw, 3);
+    }
+    ctx.restore();
+
+    // cópias fantasma deslocadas
+    if (popupGlitch % 4 < 2) {
+      ctx.globalAlpha = 0.3;
+      ctx.drawImage(POPUP_IMG, drawX + gShift, drawY - 1, pw, ph);
+      ctx.globalAlpha = 0.22;
+      ctx.drawImage(POPUP_IMG, drawX - pShift, drawY + 2, pw, ph);
+      ctx.globalAlpha = 1;
+    }
+
+    // sprite principal
+    ctx.drawImage(POPUP_IMG, drawX, drawY, pw, ph);
+
+    // blocos de glitch (fatias horizontais deslocadas)
+    if (popupGlitch % 5 < 3) {
+      const slices = 2 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < slices; i++) {
+        const sh = 4 + Math.floor(Math.random() * 10);
+        const sy = drawY + Math.floor(Math.random() * Math.max(1, ph - sh));
+        const sxOff = (Math.random() - 0.5) * 14;
+        ctx.drawImage(POPUP_IMG, 0, ((sy - drawY) / ph) * POPUP_IMG.naturalHeight, POPUP_IMG.naturalWidth, (sh / ph) * POPUP_IMG.naturalHeight,
+          drawX + sxOff, sy, pw, sh);
+        // faixa colorida por cima da fatia
+        ctx.globalAlpha = 0.2;
+        ctx.fillStyle = Math.random() > 0.35 ? '#00ff66' : '#a020f0';
+        ctx.fillRect(drawX + sxOff, sy, pw, sh);
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // scanlines verdes
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = '#00ff70';
+    for (let y = drawY; y < drawY + ph; y += 3) {
+      ctx.fillRect(drawX, y, pw, 1);
+    }
+    ctx.globalAlpha = 1;
+
+    // flash ocasional verde/roxo
+    if (popupGlitch % 17 < 2) {
+      ctx.globalAlpha = 0.15;
+      ctx.fillStyle = popupGlitch % 34 < 2 ? '#00ff55' : '#9020c0';
+      ctx.fillRect(drawX, drawY, pw, ph);
+      ctx.globalAlpha = 1;
+    }
+  } else {
+    ctx.fillStyle = '#600070';
+    ctx.fillRect(drawX, drawY, pw, ph);
   }
+
+  // Área do pop-up (bloqueia pulo)
+  window._popupBounds = { x: px, y: py, w: pw, h: ph };
+  // Hitbox do X = retângulo bege/cinza do sprite (medido na imagem original)
+  // frações relativas ao sprite: x=0.864, y=0.022, w=0.119, h=0.152
+  window._popupXBtn = {
+    x: px + pw * 0.864,
+    y: py + ph * 0.022,
+    w: pw * 0.119,
+    h: ph * 0.152
+  };
 }
 
 function drawFirewall(f) {
@@ -2184,67 +2840,71 @@ function drawFirewall(f) {
 
 function draw() {
   const th = theme();
-  ctx.fillStyle = th.dark;
-  ctx.fillRect(0, 0, 800, 300);
+
+  if (shhhActive) {
+    // céu/chão quase apagados — overlay Shhh cuida do fundo
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, 800, 300);
+  } else {
+    ctx.fillStyle = th.dark;
+    ctx.fillRect(0, 0, 800, 300);
 
   // Estrelas de fundo (parallax da direita → esquerda)
   for (let i = 0; i < 28; i++) {
     let sx = (i * 97 - frame * 0.35) % 800;
     if (sx < 0) sx += 800;
     const sy = (i * 53) % 200;
-    drawRect(sx, sy, 2, 2, th.star);
-  }
-
-  drawGround();
-  coins.forEach(drawCoin);
-  powerups.forEach(drawPowerup);
-  enemies.forEach(drawEnemy);
-  firewalls.forEach(drawFirewall);
-
-  // Dino
-  drawDino(player.x, player.y, player.anim, !player.grounded);
-
-  // Hitboxes do dino (amarelas)
-  const hboxes = getPlayerHitboxes();
-  ctx.strokeStyle = '#ffff00';
-  ctx.lineWidth = 1;
-  for (let i = 0; i < hboxes.length; i++) {
-    const hb = hboxes[i];
-    ctx.strokeRect(Math.round(hb.x), Math.round(hb.y), hb.w, hb.h);
-  }
-
-  // Hitboxes dos inimigos (vermelho)
-  ctx.strokeStyle = '#ff3333';
-  ctx.lineWidth = 1;
-  for (let i = 0; i < enemies.length; i++) {
-    const e = enemies[i];
-    if (e.type === 'bola' || e.type === 'bolav2') {
-      const cx = Math.round(e.x + e.w / 2);
-      const cy = Math.round(e.y + e.h / 2);
-      let r = Math.min(e.w, e.h) * 0.42;
-      if (e.type === 'bolav2') r = Math.min(e.w, e.h) * (e.fieldOn ? 0.72 : 0.45);
-      ctx.beginPath();
-      ctx.arc(cx, cy, Math.round(r), 0, Math.PI * 2);
-      ctx.stroke();
-    } else if (e.type === 'espinho') {
-      const t = getEspinhoTriangle(e);
-      ctx.beginPath();
-      ctx.moveTo(Math.round(t.x1), Math.round(t.y1));
-      ctx.lineTo(Math.round(t.x2), Math.round(t.y2));
-      ctx.lineTo(Math.round(t.x3), Math.round(t.y3));
-      ctx.closePath();
-      ctx.stroke();
+    // Ambiente 2: brilho um pouco mais perceptível (mesmo estilo de pulso)
+    if (invertT > 0.5) {
+      const pulse = 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(frame * 0.05 + i * 1.7));
+      const ix = Math.round(sx);
+      const iy = Math.round(sy);
+      // halo externo
+      ctx.globalAlpha = pulse * 0.22;
+      ctx.fillStyle = th.star;
+      ctx.fillRect(ix - 2, iy - 2, 6, 6);
+      // halo médio
+      ctx.globalAlpha = pulse * 0.4;
+      ctx.fillRect(ix - 1, iy - 1, 4, 4);
+      // núcleo
+      ctx.globalAlpha = Math.min(1, pulse + 0.15);
+      drawRect(sx, sy, 2, 2, th.star);
+      ctx.globalAlpha = 1;
     } else {
-      ctx.strokeRect(Math.round(e.x), Math.round(e.y), e.w, e.h);
+      drawRect(sx, sy, 2, 2, th.star);
     }
   }
+  } // fim else !shhhActive
 
-  // Hitboxes dos power-ups (ciano)
-  ctx.strokeStyle = '#00ffff';
-  ctx.lineWidth = 1;
-  for (let i = 0; i < powerups.length; i++) {
-    const p = powerups[i];
-    ctx.strokeRect(Math.round(p.x), Math.round(p.y), p.w, p.h);
+  if (!shhhActive) {
+    drawGround();
+    coins.forEach(drawCoin);
+    powerups.forEach(drawPowerup);
+    enemies.forEach(drawEnemy);
+    firewalls.forEach(drawFirewall);
+    drawShhhGlitches();
+  } else {
+    // fundo Shhh + chão residual bem escuro (dino desenhado por cima)
+    drawShhhOverlay();
+    ctx.fillStyle = '#0a0610';
+    ctx.fillRect(0, 268, 800, 32);
+  }
+
+  // Dino (visível inclusive durante Shhh)
+  drawDino(player.x, player.y, player.anim, !player.grounded);
+  // glitch de morte do Shhh por cima do dino
+  if (shhhActive && shhhDying) {
+    for (let i = 0; i < 10; i++) {
+      ctx.globalAlpha = 0.25;
+      ctx.fillStyle = Math.random() > 0.5 ? '#00ff66' : '#c040ff';
+      ctx.fillRect(
+        player.x + (Math.random() - 0.5) * 36,
+        player.y + (Math.random() - 0.5) * 44,
+        6 + Math.random() * 18,
+        2 + Math.random() * 5
+      );
+    }
+    ctx.globalAlpha = 1;
   }
 
   // Indicador visual de escudo (aura + feixe de luz estilo lente)
@@ -2388,18 +3048,101 @@ function draw() {
   }
   updateHtmlPowerHud();
 
-  // Overlay do inimigo Pop-up
-  if (popupActive) drawVirusPopup();
+  // Glitch sutil em todo o retângulo enquanto o Pop-up estiver aberto
+  if (popupActive) {
+    drawWorldGlitch();
+    drawVirusPopup();
+  }
+}
+
+function drawWorldGlitch() {
+  // Efeitos leves espalhados pelo canvas 800×300
+  const t = popupGlitch;
+
+  // scanlines bem sutis
+  ctx.globalAlpha = 0.04;
+  ctx.fillStyle = '#00ff66';
+  for (let y = (t % 3); y < 300; y += 4) {
+    ctx.fillRect(0, y, 800, 1);
+  }
+  ctx.globalAlpha = 1;
+
+  // faixas horizontais verdes/roxas ocasionais
+  const bands = 2 + (t % 3);
+  for (let i = 0; i < bands; i++) {
+    if ((t + i * 5) % 7 > 4) continue;
+    const y = ((t * 13 + i * 71) % 280);
+    const h = 1 + (i % 2);
+    ctx.globalAlpha = 0.06 + (i % 2) * 0.03;
+    ctx.fillStyle = (i % 2 === 0) ? '#00ff70' : '#a040e0';
+    ctx.fillRect(0, y, 800, h);
+  }
+  ctx.globalAlpha = 1;
+
+  // pequenos blocos de ruído / “pixel shift”
+  ctx.globalAlpha = 0.08;
+  for (let i = 0; i < 6; i++) {
+    if ((t + i) % 4 === 0) continue;
+    const bx = ((t * 37 + i * 97) % 780);
+    const by = ((t * 19 + i * 53) % 280);
+    const bw = 12 + (i * 7) % 28;
+    const bh = 2 + (i % 3);
+    ctx.fillStyle = Math.random() > 0.4 ? '#00ff55' : '#9020c0';
+    ctx.fillRect(bx, by, bw, bh);
+  }
+  ctx.globalAlpha = 1;
+
+  // flash de tela muito leve
+  if (t % 23 < 1) {
+    ctx.globalAlpha = 0.05;
+    ctx.fillStyle = '#00ff60';
+    ctx.fillRect(0, 0, 800, 300);
+    ctx.globalAlpha = 1;
+  } else if (t % 29 < 1) {
+    ctx.globalAlpha = 0.04;
+    ctx.fillStyle = '#8010b0';
+    ctx.fillRect(0, 0, 800, 300);
+    ctx.globalAlpha = 1;
+  }
+
+  // colunas verticais finas (ruído de sinal)
+  if (t % 6 < 2) {
+    ctx.globalAlpha = 0.05;
+    ctx.fillStyle = '#00e050';
+    const cx = (t * 47) % 800;
+    ctx.fillRect(cx, 0, 2, 300);
+    ctx.fillRect((cx + 120) % 800, 0, 1, 300);
+    ctx.globalAlpha = 1;
+  }
 }
 
 
 
-function loop() {
-  update();
-  draw();
-  if (gameState === 'playing') {
-    requestAnimationFrame(loop);
+function loop(timestamp) {
+  if (!loopRunning) return;
+  if (gameState !== 'playing') {
+    loopRunning = false;
+    lastFrameTime = 0;
+    updateAccumulator = 0;
+    draw();
+    return;
   }
+
+  if (!timestamp) timestamp = performance.now();
+  if (!lastFrameTime) lastFrameTime = timestamp;
+  let frameTime = timestamp - lastFrameTime;
+  lastFrameTime = timestamp;
+  // Evita “spiral of death” após troca de aba / engasgo longo
+  if (frameTime > 100) frameTime = 100;
+  updateAccumulator += frameTime;
+
+  // Sempre ~60 updates/s, independente de 60 ou 120 Hz da tela
+  while (updateAccumulator >= FIXED_DT) {
+    update();
+    updateAccumulator -= FIXED_DT;
+  }
+  draw();
+  requestAnimationFrame(loop);
 }
 
 // Tela inicial
